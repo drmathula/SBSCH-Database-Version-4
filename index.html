@@ -1,0 +1,3071 @@
+<!DOCTYPE html>
+<!-- saved from url=(0049)file:///C:/Users/mathu/Downloads/index%20(3).html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SBSCH Patient Database - Enhanced</title>
+    <script src="file:///C:/Users/mathu/Downloads/SBSCH%20Patient%20Database%20-%20Enhanced%20V5_files/tesseract.min.js.download"></script>
+    <!-- Added external libraries for ICD decompression and Excel export -->
+    <script src="./SBSCH Patient Database - Enhanced GPT ICD Amended_files/pako.min.js.download"></script>
+    <script src="./SBSCH Patient Database - Enhanced GPT ICD Amended_files/xlsx.full.min.js.download"></script>
+    <!-- Local ICD-10 dataset loader -->
+    <script src="file:///C:/Users/mathu/Downloads/icd10_data.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #1565c0;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #1976d2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1565c0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(25, 118, 210, 0.4);
+        }
+
+        .btn-success {
+            background: #43a047;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #388e3c;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-danger {
+            background: #e53935;
+            color: white;
+        }
+
+        .btn-purple {
+            background: #7b1fa2;
+            color: white;
+        }
+
+        .btn-orange {
+            background: #f57c00;
+            color: white;
+        }
+
+        .btn-info {
+            background: #0288d1;
+            color: white;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #1976d2;
+            box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+        }
+
+        .info-card {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 6px;
+        }
+
+        .info-card p:first-child {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .info-card p:last-child {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .diagnosis-item {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .icd-search-results {
+            position: absolute;
+            width: 100%;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            margin-top: 4px;
+        }
+
+        .icd-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+
+        .icd-item:hover {
+            background: #e3f2fd;
+        }
+
+        .icd-item:last-child {
+            border-bottom: none;
+        }
+
+        .patient-list-item {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .patient-list-item:hover {
+            background: #e3f2fd;
+            transform: translateX(5px);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-blue {
+            background: #bbdefb;
+            color: #1565c0;
+        }
+
+        .badge-green {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .badge-orange {
+            background: #ffe0b2;
+            color: #ef6c00;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .camera-view {
+            width: 100%;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            background: #000;
+        }
+
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #1976d2;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+            .btn, .no-print {
+                display: none !important;
+            }
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert-info {
+            background: #e3f2fd;
+            color: #1565c0;
+            border: 1px solid #90caf9;
+        }
+
+        .doc-item {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .section-divider {
+            border-top: 2px solid #e0e0e0;
+            margin: 30px 0;
+            padding-top: 20px;
+        }
+
+        .image-preview {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border: 2px solid #ddd;
+        }
+
+        .doc-upload-area {
+            background: #f9f9f9;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+
+        .progress-text {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .diagnosis-box {
+            background: #f9f9f9;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .diagnosis-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: flex-end;
+        }
+
+        .diagnosis-input-group > div {
+            flex: 1;
+        }
+
+        textarea.form-control {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .extracted-text-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .extracted-text-content {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .manual-entry-section {
+            background: #e8f5e9;
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+
+        .image-text-container {
+            display: flex;
+            gap: 20px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+
+        .image-container {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .text-container {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .encounter-tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .encounter-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            white-space: nowrap;
+        }
+
+        .encounter-tab.active {
+            border-bottom: 3px solid #1976d2;
+            font-weight: bold;
+            color: #1976c0;
+        }
+
+        .encounter-content {
+            display: none;
+        }
+
+        .encounter-content.active {
+            display: block;
+        }
+
+        .encounter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        @media (max-width: 768px) {
+            .image-text-container {
+                flex-direction: column;
+            }
+            .encounter-tabs {
+                flex-direction: column;
+            }
+            .encounter-tab {
+                padding: 8px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Home View -->
+        <div id="homeView" class="view">
+            <div class="card">
+                <div class="header">
+                    <h1>Sirimavo Bandaranaike Specialised Children's Hospital</h1>
+                    <p>Patient Database Management System</p>
+                    <p style="font-size: 14px; color: #888; margin-top: 5px;">Dr Mathula Hettiarachchi - Consultant Pediatric Surgeon</p>
+                </div>
+
+                <div class="grid-3">
+                    <button class="btn btn-primary" onclick="showNewPatient()" style="padding: 40px; font-size: 18px; flex-direction: column;">
+                        <span style="font-size: 48px;">➕</span>
+                        <div style="margin-top: 10px;">New Patient</div>
+                        <div style="font-size: 14px; font-weight: normal; opacity: 0.9;">Register a new patient</div>
+                    </button>
+                    <button class="btn btn-success" onclick="showSearch()" style="padding: 40px; font-size: 18px; flex-direction: column;">
+                        <span style="font-size: 48px;">🔍</span>
+                        <div style="margin-top: 10px;">Search Patients</div>
+                        <div style="font-size: 14px; font-weight: normal; opacity: 0.9;">Find patient records</div>
+                    </button>
+                    <button class="btn btn-info" onclick="exportDatabaseJSON()" style="padding: 40px; font-size: 18px; flex-direction: column;">
+                        <span style="font-size: 48px;">💾</span>
+                        <div style="margin-top: 10px;">Export JSON</div>
+                        <div style="font-size: 14px; font-weight: normal; opacity: 0.9;">Download all patient data as JSON</div>
+                    </button>
+                    <!-- New button for Excel export -->
+                    <button class="btn btn-purple" onclick="exportDatabaseExcel()" style="padding: 40px; font-size: 18px; flex-direction: column;">
+                        <span style="font-size: 48px;">📄</span>
+                        <div style="margin-top: 10px;">Export Excel</div>
+                        <div style="font-size: 14px; font-weight: normal; opacity: 0.9;">Download data as .xlsx</div>
+                    </button>
+                </div>
+
+                <h3 style="margin-bottom: 15px; color: #333;">Recent Patients</h3>
+                <div id="recentPatients"><div class="patient-list-item">
+                    <div>
+                        <strong>Sam</strong>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            DOB: 2025-10-03  | Male
+                        </div>
+                        <div style="font-size: 13px; color: #888; margin-top: 5px;">Q64.0</div>
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            2 encounters
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge badge-blue">SBSCH021125015</span>
+                    </div>
+                </div><div class="patient-list-item">
+                    <div>
+                        <strong>Kal</strong>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            DOB: 2025-08-01  | Male
+                        </div>
+                        
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            0 encounters
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge badge-blue">SBSCH036902819</span>
+                    </div>
+                </div><div class="patient-list-item">
+                    <div>
+                        <strong>Yas</strong>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            DOB: 2025-09-05  | Male
+                        </div>
+                        
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            0 encounters
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge badge-blue">SBSCH855657611</span>
+                    </div>
+                </div><div class="patient-list-item">
+                    <div>
+                        <strong>Sam</strong>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            DOB: 2024-12-02  | Male
+                        </div>
+                        
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            0 encounters
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge badge-blue">SBSCH731767253</span>
+                    </div>
+                </div><div class="patient-list-item">
+                    <div>
+                        <strong>Mat</strong>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            DOB: 2025-01-01  | Male
+                        </div>
+                        
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            4 encounters
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge badge-blue">SBSCH011125246</span>
+                    </div>
+                </div></div>
+            </div>
+        </div>
+
+        <!-- New Patient View -->
+        <div id="newPatientView" class="view hidden">
+            <div class="card">
+                <h2 style="color: #1565c0; margin-bottom: 25px;">New Patient Registration</h2>
+                
+                <div class="alert alert-info">
+                    <strong>Patient ID:</strong> <span id="newPatientId">SBSCH051125542</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Upload Demographic Document (Optional)</label>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="openCamera(&#39;demographics&#39;)">📷 Take Photo</button>
+                        <button class="btn btn-success" onclick="document.getElementById(&#39;demoUpload&#39;).click()">📤 Upload Image</button>
+                        <input type="file" id="demoUpload" accept="image/*" style="display: none;" onchange="handleDemoUpload(event)">
+                    </div>
+                    <div id="demoImagePreview"></div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" id="name" class="form-control" placeholder="Enter patient name">
+                    </div>
+                    <div class="form-group">
+                        <label>Date of Birth</label>
+                        <input type="date" id="dob" class="form-control" onchange="calculateAge()">
+                    </div>
+                    <div class="form-group">
+                        <label>Age (auto-calculated)</label>
+                        <input type="text" id="age" class="form-control" placeholder="Auto-calculated" readonly="" style="background: #f5f5f5;">
+                    </div>
+                    <div class="form-group">
+                        <label>Sex</label>
+                        <select id="sex" class="form-control">
+                            <option value="">Select</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Number</label>
+                        <input type="text" id="contact" class="form-control" placeholder="Enter contact number">
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <textarea id="address" class="form-control" placeholder="Enter patient address" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Current Weight (kg)</label>
+                        <input type="text" id="weight" class="form-control" placeholder="kg">
+                    </div>
+                    <div class="form-group">
+                        <label>Birth Weight (kg)</label>
+                        <input type="text" id="birthWeight" class="form-control" placeholder="kg">
+                    </div>
+                    <div class="form-group">
+                        <label>Gestation (weeks)</label>
+                        <input type="text" id="gestation" class="form-control" placeholder="weeks">
+                    </div>
+                    <div class="form-group">
+                        <label>Location</label>
+                        <select id="location" class="form-control">
+                            <option value="SBSCH">SBSCH</option>
+                            <option value="Asiri Hospital">Asiri Hospital</option>
+                            <option value="Suwa Sewana Hospital">Suwa Sewana Hospital</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Admission Type</label>
+                        <select id="admissionType" class="form-control">
+                            <option value="">Select</option>
+                            <option value="Requested">Requested</option>
+                            <option value="Urgent">Urgent</option>
+                            <option value="Acute">Acute</option>
+                            <option value="Neonatal">Neonatal</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Patient Type</label>
+                        <select id="patientType" class="form-control" onchange="toggleEncounterFields()">
+                            <option value="Outpatient">Outpatient</option>
+                            <option value="Inpatient">Inpatient</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="outpatientFields">
+                        <label>Outpatient Visit Number</label>
+                        <input type="number" id="visitNumber" class="form-control" placeholder="Visit number" min="1" value="1">
+                    </div>
+                    <div class="form-group hidden" id="inpatientFields">
+                        <label>Inpatient Admission Number</label>
+                        <input type="number" id="admissionNumber" class="form-control" placeholder="Admission number" min="1" value="1">
+                    </div>
+                    <div class="form-group hidden" id="inpatientWardField">
+                        <label>Ward</label>
+                        <input type="text" id="ward" class="form-control" placeholder="Enter ward">
+                    </div>
+                    <div class="form-group">
+                        <label>Date of Admission/Visit</label>
+                        <input type="date" id="dateAdmission" class="form-control">
+                    </div>
+                    <div class="form-group hidden" id="dischargeField">
+                        <label>Date of Discharge</label>
+                        <input type="date" id="dateDischarge" class="form-control">
+                    </div>
+                </div>
+
+                <!-- Diagnosis Section -->
+                <div class="diagnosis-box">
+                    <h3 style="margin-bottom: 15px; color: #333;">Diagnoses (Add up to 10)</h3>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 15px;">You can search ICD-10 codes or enter free text diagnoses</p>
+                    
+                    <div class="form-group" style="position: relative;">
+                        <label>Search ICD-10 Code</label>
+                        <input type="text" id="icdSearch" class="form-control" placeholder="Search ICD-10 code or diagnosis..." oninput="searchICD(this.value)" onfocus="searchICD(this.value)">
+                        <div id="icdResults" class="icd-search-results hidden"><div class="icd-item"><strong>P59.9</strong> - Neonatal jaundice, unspecified</div><div class="icd-item"><strong>P36.9</strong> - Bacterial sepsis of newborn, unspecified</div><div class="icd-item"><strong>Q35.9</strong> - Cleft palate, unspecified</div><div class="icd-item"><strong>Q36.9</strong> - Cleft lip, unspecified</div><div class="icd-item"><strong>Q43.1</strong> - Hirschsprung disease</div><div class="icd-item"><strong>Q65.0</strong> - Congenital dislocation of hip, unilateral</div><div class="icd-item"><strong>Q90.9</strong> - Down syndrome, unspecified</div><div class="icd-item"><strong>K40.90</strong> - Unilateral inguinal hernia, without obstruction or gangrene</div><div class="icd-item"><strong>J18.9</strong> - Pneumonia, unspecified organism</div><div class="icd-item"><strong>J06.9</strong> - Acute upper respiratory infection, unspecified</div></div>
+                    </div>
+
+                    <div style="text-align: center; margin: 20px 0; color: #999;">OR</div>
+
+                    <div class="form-group">
+                        <label>Enter Free Text Diagnosis</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="freeTextDiagnosis" class="form-control" placeholder="Enter diagnosis description...">
+                            <button class="btn btn-primary" onclick="addFreeTextDiagnosis()">Add</button>
+                        </div>
+                    </div>
+
+                    <div id="selectedDiagnoses"><p style="text-align: center; color: #666; padding: 15px;">No diagnoses added yet</p></div>
+                    <div id="diagnosisCounter" style="text-align: right; color: #666; font-size: 14px; margin-top: 10px;">0 / 10 diagnoses added</div>
+                </div>
+
+                <!-- Document Upload Section -->
+                <div class="section-divider">
+                    <h3 style="color: #333; margin-bottom: 15px;">📄 Upload Medical Documents (Optional)</h3>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 15px;">You can upload medical documents now, or add them later from the patient record.</p>
+                    
+                    <div class="doc-upload-area">
+                        <div class="form-group">
+                            <label>Document Type</label>
+                            <select id="newPatientDocType" class="form-control">
+                                <option value="">Select document type...</option>
+                                <option value="Progress Report">Progress Report</option>
+                                <option value="Surgical Intervention">Surgical Intervention</option>
+                                <option value="Imaging Report">Imaging Report</option>
+                                <option value="Discharge Summary">Discharge Summary</option>
+                                <option value="Consultation Note">Consultation Note</option>
+                                <option value="Laboratory Results">Laboratory Results</option>
+                                <option value="Patient Image">Patient Image</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <h4 style="margin: 15px 0 10px 0; color: #333;">Upload Option 1: Photo/Image</h4>
+                        <div class="btn-group" style="margin-bottom: 20px;">
+                            <button class="btn btn-primary" onclick="openCamera(&#39;newPatientDoc&#39;)">📷 Take Photo</button>
+                            <button class="btn btn-success" onclick="document.getElementById(&#39;newPatientDocUpload&#39;).click()">📤 Choose File</button>
+                            <input type="file" id="newPatientDocUpload" accept="image/*" style="display: none;" onchange="handleNewPatientDocUpload(event)">
+                        </div>
+
+                        <div style="text-align: center; margin: 20px 0; color: #999;">OR</div>
+
+                        <h4 style="margin: 15px 0 10px 0; color: #333;">Upload Option 2: Manual Text Entry</h4>
+                        <div class="form-group">
+                            <label>Enter Document Details/Findings</label>
+                            <textarea id="newPatientManualDocText" class="form-control" placeholder="Type the document content here..." style="min-height: 120px;"></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="addManualDocumentToNewPatient()">💾 Save Manual Entry</button>
+                    </div>
+                    
+                    <div id="newPatientDocuments"></div>
+                </div>
+
+                <div class="btn-group" style="margin-top: 30px;">
+                    <button class="btn btn-success" onclick="savePatient()">💾 Save Patient</button>
+                    <button class="btn btn-secondary" onclick="showHome()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search View -->
+        <div id="searchView" class="view hidden">
+            <div class="card">
+                <h2 style="color: #1565c0; margin-bottom: 25px;">Search Patients</h2>
+                
+                <div class="btn-group" style="margin-bottom: 20px;">
+                    <select id="searchType" class="form-control" style="width: auto;">
+                        <option value="name">Search by Name</option>
+                        <option value="id">Search by ID</option>
+                        <option value="contact">Search by Contact</option>
+                        <option value="diagnosis">Search by Diagnosis</option>
+                        <option value="icd">Search by ICD Code</option>
+                    </select>
+                    <input type="text" id="searchInput" class="form-control" placeholder="Enter search term..." style="flex: 1;">
+                    <button class="btn btn-primary" onclick="performSearch()">🔍 Search</button>
+                </div>
+
+                <div id="searchResults"></div>
+
+                <button class="btn btn-secondary" onclick="showHome()" style="margin-top: 20px;">Back to Home</button>
+            </div>
+        </div>
+
+        <!-- Patient View -->
+        <div id="patientView" class="view hidden">
+            <div class="card">
+                <div style="border-bottom: 2px solid #1565c0; padding-bottom: 20px; margin-bottom: 20px;">
+                    <div class="header">
+                        <h1>Sirimavo Bandaranaike Specialised Children's Hospital</h1>
+                        <p>Dr Mathula Hettiarachchi - Consultant Pediatric Surgeon</p>
+                    </div>
+                    
+                    <div class="flex-between">
+                        <div>
+                            <h2 style="color: #333;" id="patientName">Sam</h2>
+                            <p style="color: #666;">Patient ID: <span id="patientId">SBSCH021125015</span></p>
+                        </div>
+                        <div class="btn-group no-print">
+                            <button class="btn btn-orange" onclick="editPatient()">✏️ Edit Demographics</button>
+                            <button class="btn btn-purple" onclick="addNewEncounter()">➕ New Encounter</button>
+                            <button class="btn btn-success" onclick="window.print()">📥 Export PDF</button>
+                            <button class="btn btn-secondary" onclick="showHome()">Close</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Demographic Photo -->
+                <div id="demographicPhotoSection"></div>
+
+                <h3 style="margin-bottom: 15px;">Demographics</h3>
+                <div class="grid-4" id="patientDemographics">
+                <div class="info-card">
+                    <p>Date of Birth</p>
+                    <p>2025-10-03</p>
+                </div>
+                <div class="info-card">
+                    <p>Age</p>
+                    <p>30 days</p>
+                </div>
+                <div class="info-card">
+                    <p>Sex</p>
+                    <p>Male</p>
+                </div>
+                <div class="info-card">
+                    <p>Contact Number</p>
+                    <p>099999999</p>
+                </div>
+                <div class="info-card">
+                    <p>Address</p>
+                    <p>zgdsghd</p>
+                </div>
+                <div class="info-card">
+                    <p>Birth Weight</p>
+                    <p>Not specified</p>
+                </div>
+                <div class="info-card">
+                    <p>Gestation</p>
+                    <p>Not specified</p>
+                </div>
+                <div class="info-card">
+                    <p>Patient Created</p>
+                    <p>Nov 2, 2025</p>
+                </div>
+                
+                <div class="info-card">
+                    <p>Encounter Dates</p>
+                    <p>Nov 2, 2025<br>Nov 2, 2025</p>
+                </div>
+                
+            </div>
+
+                <!-- Encounter Tabs -->
+                <div id="encounterTabs" class="encounter-tabs"><div class="encounter-tab active">OP #1 (Asiri Hospital)</div><div class="encounter-tab ">IP #1 (SBSCH)</div></div>
+
+                <!-- Encounter Content -->
+                <div id="encounterContent"><div class="encounter-content active" id="encounter-0">
+                <div class="encounter-header">
+                    <h3>Outpatient Visit Details</h3>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #666; font-size: 14px;">Created: Nov 2, 2025</span>
+                        <!-- Edit button for this encounter -->
+                        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 14px;" onclick="startEditEncounter(0)">✏️ Edit</button>
+                    </div>
+                </div>
+                <div class="grid-4">
+                    <div class="info-card">
+                        <p>Location</p>
+                        <p>Asiri Hospital</p>
+                    </div>
+                    <div class="info-card">
+                        <p>Patient Type</p>
+                        <p>Outpatient</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <p>Visit Number</p>
+                        <p>1</p>
+                    </div>
+                    
+                    
+                    <div class="info-card">
+                        <p>Admission Type</p>
+                        <p>Requested</p>
+                    </div>
+                    <div class="info-card">
+                        <p>Date of Admission/Visit</p>
+                        <p>2025-11-06</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <p>Weight</p>
+                        <p>Not specified</p>
+                    </div>
+                </div>
+                <h3 style="margin: 25px 0 15px 0;">Diagnoses</h3>
+                <div>
+                    <div class="diagnosis-item">
+                        <div>
+                            <strong>Q64.0</strong> - Epispadias
+                        </div>
+                    </div>
+                
+                    <div class="diagnosis-item">
+                        <div>
+                            Undescended Testis
+                        </div>
+                    </div>
+                </div>
+                <h3 style="margin: 25px 0 15px 0;">Documents</h3>
+                <div>
+                    <div class="doc-item">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                            <div>
+                                <strong>Surgical Intervention</strong>
+                                <div style="font-size: 14px; color: #666;">2025-11-02</div>
+                            </div>
+                        </div>
+                        
+                        <div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px;">Repair</div>
+                    </div>
+                </div>
+            </div><div class="encounter-content " id="encounter-1">
+                <div class="encounter-header">
+                    <h3>Inpatient Admission Details</h3>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #666; font-size: 14px;">Created: Nov 2, 2025</span>
+                        <!-- Edit button for this encounter -->
+                        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 14px;" onclick="startEditEncounter(1)">✏️ Edit</button>
+                    </div>
+                </div>
+                <div class="grid-4">
+                    <div class="info-card">
+                        <p>Location</p>
+                        <p>SBSCH</p>
+                    </div>
+                    <div class="info-card">
+                        <p>Patient Type</p>
+                        <p>Inpatient</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <p>Admission Number</p>
+                        <p>1</p>
+                    </div>
+                    
+                    
+                    <div class="info-card">
+                        <p>Ward</p>
+                        <p>Not specified</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <p>Admission Type</p>
+                        <p>Not specified</p>
+                    </div>
+                    <div class="info-card">
+                        <p>Date of Admission/Visit</p>
+                        <p>Not specified</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <p>Date of Discharge</p>
+                        <p>Not discharged</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <p>Weight</p>
+                        <p>Not specified</p>
+                    </div>
+                </div>
+                <h3 style="margin: 25px 0 15px 0;">Diagnoses</h3>
+                <div>
+                    <div class="diagnosis-item">
+                        <div>
+                            <strong>Q64.0</strong> - Epispadias
+                        </div>
+                    </div>
+                </div>
+                <h3 style="margin: 25px 0 15px 0;">Documents</h3>
+                <div>
+                    <div class="doc-item">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                            <div>
+                                <strong>Surgical Intervention</strong>
+                                <div style="font-size: 14px; color: #666;">2025-11-02</div>
+                            </div>
+                        </div>
+                        
+                        <div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px;">hghkllkl</div>
+                    </div>
+                </div>
+            </div></div>
+
+                <div class="flex-between" style="margin-top: 30px;">
+                    <h3>Medical Documents</h3>
+                    <button class="btn btn-purple no-print" onclick="toggleDocUpload()">📤 Upload Document</button>
+                </div>
+
+                <div id="docUploadSection" class="hidden" style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 15px 0;">
+                    <div class="form-group">
+                        <label>Document Type</label>
+                        <select id="docType" class="form-control">
+                            <option value="">Select document type...</option>
+                            <option value="Progress Report">Progress Report</option>
+                            <option value="Surgical Intervention">Surgical Intervention</option>
+                            <option value="Imaging Report">Imaging Report</option>
+                            <option value="Discharge Summary">Discharge Summary</option>
+                            <option value="Consultation Note">Consultation Note</option>
+                            <option value="Laboratory Results">Laboratory Results</option>
+                            <option value="Patient Image">Patient Image</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <h4 style="margin: 15px 0 10px 0; color: #333;">Upload Option 1: Photo/Image</h4>
+                    <div class="btn-group" style="margin-bottom: 20px;">
+                        <button class="btn btn-primary" onclick="openCamera(&#39;document&#39;)">📷 Take Photo</button>
+                        <button class="btn btn-success" onclick="document.getElementById(&#39;docUpload&#39;).click()">📤 Choose File</button>
+                        <input type="file" id="docUpload" accept="image/*" style="display: none;" onchange="handleDocUpload(event)">
+                    </div>
+
+                    <div style="text-align: center; margin: 20px 0; color: #999;">OR</div>
+
+                    <h4 style="margin: 15px 0 10px 0; color: #333;">Upload Option 2: Manual Text Entry</h4>
+                    <div class="form-group">
+                        <label>Enter Document Details/Findings</label>
+                        <textarea id="manualDocText" class="form-control" placeholder="Type the document content here..." style="min-height: 120px;"></textarea>
+                    </div>
+                    <button class="btn btn-success" onclick="addManualDocument()">💾 Save Manual Entry</button>
+                </div>
+
+                <div id="patientDocuments"><p style="text-align: center; color: #666; padding: 30px;">No documents uploaded yet</p></div>
+            </div>
+        </div>
+
+        <!-- Edit Patient View -->
+        <div id="editPatientView" class="view hidden">
+            <div class="card">
+                <h2 style="color: #1565c0; margin-bottom: 25px;">Edit Patient Demographics</h2>
+                
+                <div class="alert alert-info">
+                    <strong>Patient ID:</strong> <span id="editPatientId"></span>
+                </div>
+
+                <div class="form-group">
+                    <label>Upload Demographic Document (Optional)</label>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="openCamera(&#39;editDemographics&#39;)">📷 Take Photo</button>
+                        <button class="btn btn-success" onclick="document.getElementById(&#39;editDemoUpload&#39;).click()">📤 Upload Image</button>
+                        <input type="file" id="editDemoUpload" accept="image/*" style="display: none;" onchange="handleEditDemoUpload(event)">
+                    </div>
+                    <div id="editDemoImagePreview"></div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" id="editName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Date of Birth</label>
+                        <input type="date" id="editDob" class="form-control" onchange="calculateEditAge()">
+                    </div>
+                    <div class="form-group">
+                        <label>Age (auto-calculated)</label>
+                        <input type="text" id="editAge" class="form-control" readonly="" style="background: #f5f5f5;">
+                    </div>
+                    <div class="form-group">
+                        <label>Sex</label>
+                        <select id="editSex" class="form-control">
+                            <option value="">Select</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Number</label>
+                        <input type="text" id="editContact" class="form-control" placeholder="Enter contact number">
+                    </div>
+                    <div class="form-group">
+                        <label>Address</label>
+                        <textarea id="editAddress" class="form-control" placeholder="Enter patient address" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Current Weight (kg)</label>
+                        <input type="text" id="editWeight" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Birth Weight (kg)</label>
+                        <input type="text" id="editBirthWeight" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Gestation (weeks)</label>
+                        <input type="text" id="editGestation" class="form-control">
+                    </div>
+                </div>
+
+                <div class="btn-group" style="margin-top: 30px;">
+                    <button class="btn btn-success" onclick="saveEditedPatient()">💾 Save Changes</button>
+                    <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Encounter View -->
+        <div id="newEncounterView" class="view hidden">
+            <div class="card">
+                <h2 style="color: #1565c0; margin-bottom: 25px;">New Patient Encounter</h2>
+                
+                <div class="alert alert-info">
+                    <strong>Patient ID:</strong> <span id="encounterPatientId">SBSCH021125015</span><br>
+                    <strong>Patient Name:</strong> <span id="encounterPatientName">Sam</span>
+                </div>
+
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label>Location</label>
+                        <select id="encounterLocation" class="form-control">
+                            <option value="SBSCH">SBSCH</option>
+                            <option value="Asiri Hospital">Asiri Hospital</option>
+                            <option value="Suwa Sewana Hospital">Suwa Sewana Hospital</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Patient Type</label>
+                        <select id="encounterPatientType" class="form-control" onchange="toggleEncounterFields(&#39;encounter&#39;)">
+                            <option value="Outpatient">Outpatient</option>
+                            <option value="Inpatient">Inpatient</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="encounterOutpatientFields">
+                        <label>Outpatient Visit Number</label>
+                        <input type="number" id="encounterVisitNumber" class="form-control" placeholder="Visit number" min="1">
+                    </div>
+                    <div class="form-group hidden" id="encounterInpatientFields">
+                        <label>Inpatient Admission Number</label>
+                        <input type="number" id="encounterAdmissionNumber" class="form-control" placeholder="Admission number" min="1">
+                    </div>
+                    <div class="form-group hidden" id="encounterInpatientWardField">
+                        <label>Ward</label>
+                        <input type="text" id="encounterWard" class="form-control" placeholder="Enter ward">
+                    </div>
+                    <div class="form-group">
+                        <label>Admission Type</label>
+                        <select id="encounterAdmissionType" class="form-control">
+                            <option value="">Select</option>
+                            <option value="Requested">Requested</option>
+                            <option value="Urgent">Urgent</option>
+                            <option value="Acute">Acute</option>
+                            <option value="Neonatal">Neonatal</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date of Admission/Visit</label>
+                        <input type="date" id="encounterDateAdmission" class="form-control">
+                    </div>
+                    <div class="form-group hidden" id="encounterDischargeField">
+                        <label>Date of Discharge</label>
+                        <input type="date" id="encounterDateDischarge" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label>Current Weight (kg)</label>
+                        <input type="text" id="encounterWeight" class="form-control" placeholder="kg">
+                    </div>
+                </div>
+
+                <!-- Diagnosis Section -->
+                <div class="diagnosis-box">
+                    <h3 style="margin-bottom: 15px; color: #333;">Diagnoses (Add up to 10)</h3>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 15px;">You can search ICD-10 codes or enter free text diagnoses</p>
+                    
+                    <div class="form-group" style="position: relative;">
+                        <label>Search ICD-10 Code</label>
+                        <input type="text" id="encounterIcdSearch" class="form-control" placeholder="Search ICD-10 code or diagnosis..." oninput="searchICD(this.value, &#39;encounter&#39;)" onfocus="searchICD(this.value, &#39;encounter&#39;)">
+                        <div id="encounterIcdResults" class="icd-search-results hidden"></div>
+                    </div>
+
+                    <div style="text-align: center; margin: 20px 0; color: #999;">OR</div>
+
+                    <div class="form-group">
+                        <label>Enter Free Text Diagnosis</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="encounterFreeTextDiagnosis" class="form-control" placeholder="Enter diagnosis description...">
+                            <button class="btn btn-primary" onclick="addFreeTextDiagnosis(&#39;encounter&#39;)">Add</button>
+                        </div>
+                    </div>
+
+                    <div id="encounterSelectedDiagnoses"><div class="diagnosis-item">
+                        <div>
+                            <strong>Q64.0</strong> - Epispadias
+                        </div>
+                        <button class="btn btn-danger" onclick="removeEncounterDiagnosis(0)">❌ Remove</button>
+                    </div><div class="diagnosis-item">
+                        <div>
+                            Undescended Testis
+                        </div>
+                        <button class="btn btn-danger" onclick="removeEncounterDiagnosis(1)">❌ Remove</button>
+                    </div></div>
+                    <div id="encounterDiagnosisCounter" style="text-align: right; color: #666; font-size: 14px; margin-top: 10px;">2 / 10 diagnoses added</div>
+                </div>
+
+                <!-- Document Upload Section for New Encounter -->
+                <div class="section-divider">
+                    <h3 style="color: #333; margin-bottom: 15px;">📄 Upload Medical Documents (Optional)</h3>
+                    <p style="color: #666; font-size: 14px; margin-bottom: 15px;">You can upload medical documents for this encounter.</p>
+                    
+                    <div class="doc-upload-area">
+                        <div class="form-group">
+                            <label>Document Type</label>
+                            <select id="encounterDocType" class="form-control">
+                                <option value="">Select document type...</option>
+                                <option value="Progress Report">Progress Report</option>
+                                <option value="Surgical Intervention">Surgical Intervention</option>
+                                <option value="Imaging Report">Imaging Report</option>
+                                <option value="Discharge Summary">Discharge Summary</option>
+                                <option value="Consultation Note">Consultation Note</option>
+                                <option value="Laboratory Results">Laboratory Results</option>
+                                <option value="Patient Image">Patient Image</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <h4 style="margin: 15px 0 10px 0; color: #333;">Upload Option 1: Photo/Image</h4>
+                        <div class="btn-group" style="margin-bottom: 20px;">
+                            <button class="btn btn-primary" onclick="openCamera(&#39;encounterDoc&#39;)">📷 Take Photo</button>
+                            <button class="btn btn-success" onclick="document.getElementById(&#39;encounterDocUpload&#39;).click()">📤 Choose File</button>
+                            <input type="file" id="encounterDocUpload" accept="image/*" style="display: none;" onchange="handleEncounterDocUpload(event)">
+                        </div>
+
+                        <div style="text-align: center; margin: 20px 0; color: #999;">OR</div>
+
+                        <h4 style="margin: 15px 0 10px 0; color: #333;">Upload Option 2: Manual Text Entry</h4>
+                        <div class="form-group">
+                            <label>Enter Document Details/Findings</label>
+                            <textarea id="encounterManualDocText" class="form-control" placeholder="Type the document content here..." style="min-height: 120px;"></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="addManualDocumentToEncounter()">💾 Save Manual Entry</button>
+                    </div>
+                    
+                    <div id="encounterDocuments"><h4 style="margin-bottom: 15px;">Documents to be saved with encounter:</h4><div class="doc-item">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <strong>Surgical Intervention</strong>
+                            <div style="font-size: 14px; color: #666;">2025-11-02</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteEncounterDocument(&#39;doc_1762093774138&#39;)">🗑️ Remove</button>
+                    </div>
+                    
+                    <div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px;">Repair</div>
+                </div></div>
+                </div>
+
+                <div class="btn-group" style="margin-top: 30px;">
+                    <button class="btn btn-success" onclick="saveEncounter()">💾 Save Encounter</button>
+                    <button class="btn btn-secondary" onclick="cancelEncounter()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Modal -->
+    <div id="cameraModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 15px;">Position document in frame</h3>
+            <video id="cameraVideo" class="camera-view" autoplay="" playsinline=""></video>
+            <canvas id="cameraCanvas" style="display: none;"></canvas>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="capturePhoto()">📷 Capture Photo</button>
+                <button class="btn btn-secondary" onclick="closeCamera()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loading" class="loading">
+        <div style="background: white; padding: 30px; border-radius: 12px; text-align: center; min-width: 250px;">
+            <div class="spinner"></div>
+            <p style="margin-top: 15px; color: #333;" id="loadingText">Processing image...</p>
+            <p class="progress-text" id="progressText"></p>
+        </div>
+    </div>
+
+    <script>
+        // Comprehensive ICD-10 Codes Database (Pediatric Focus) - EXPANDED
+        let ICD10_CODES = [
+            // Neonatal Conditions
+            { code: 'P07.0', description: 'Extremely low birth weight newborn' },
+            { code: 'P07.1', description: 'Other low birth weight newborn' },
+            { code: 'P07.2', description: 'Extreme immaturity of newborn' },
+            { code: 'P07.3', description: 'Other preterm newborn' },
+            { code: 'P22.0', description: 'Respiratory distress syndrome of newborn' },
+            { code: 'P59.9', description: 'Neonatal jaundice, unspecified' },
+            { code: 'P35.0', description: 'Congenital rubella syndrome' },
+            { code: 'P36.9', description: 'Bacterial sepsis of newborn, unspecified' },
+            
+            // Congenital Malformations
+            { code: 'Q21.0', description: 'Ventricular septal defect' },
+            { code: 'Q21.1', description: 'Atrial septal defect' },
+            { code: 'Q21.3', description: 'Tetralogy of Fallot' },
+            { code: 'Q25.0', description: 'Patent ductus arteriosus' },
+            { code: 'Q35.9', description: 'Cleft palate, unspecified' },
+            { code: 'Q36.9', description: 'Cleft lip, unspecified' },
+            { code: 'Q43.1', description: 'Hirschsprung disease' },
+            { code: 'Q79.2', description: 'Exomphalos' },
+            { code: 'Q79.3', description: 'Gastroschisis' },
+            { code: 'Q64.1', description: 'Exstrophy of urinary bladder' },
+            { code: 'Q62.0', description: 'Congenital hydronephrosis' },
+            { code: 'Q65.0', description: 'Congenital dislocation of hip, unilateral' },
+            { code: 'Q66.8', description: 'Other congenital deformities of feet' },
+            { code: 'Q90.9', description: 'Down syndrome, unspecified' },
+            
+            // Pediatric Surgical Conditions
+            { code: 'K40.90', description: 'Unilateral inguinal hernia, without obstruction or gangrene' },
+            { code: 'K35.80', description: 'Acute appendicitis' },
+            { code: 'K56.0', description: 'Intussusception' },
+            { code: 'K42.9', description: 'Umbilical hernia without obstruction or gangrene' },
+            { code: 'Q41.0', description: 'Congenital absence, atresia and stenosis of duodenum' },
+            { code: 'Q42.9', description: 'Congenital absence, atresia and stenosis of large intestine' },
+            { code: 'N13.5', description: 'Crossing vessel and stricture of ureter' },
+            { code: 'Q39.0', description: 'Atresia of oesophagus without fistula' },
+            { code: 'Q39.1', description: 'Atresia of oesophagus with tracheo-oesophageal fistula' },
+            
+            // Pediatric Infections
+            { code: 'J18.9', description: 'Pneumonia, unspecified organism' },
+            { code: 'J06.9', description: 'Acute upper respiratory infection, unspecified' },
+            { code: 'J03.90', description: 'Acute tonsillitis, unspecified' },
+            { code: 'A09', description: 'Infectious gastroenteritis and colitis' },
+            { code: 'B34.9', description: 'Viral infection, unspecified' },
+            { code: 'B97.89', description: 'Other viral agents as the cause of diseases classified elsewhere' },
+            { code: 'A49.9', description: 'Bacterial infection, unspecified' },
+            { code: 'L03.90', description: 'Cellulitis, unspecified' },
+            { code: 'K35.30', description: 'Acute appendicitis with localized peritonitis' },
+            
+            // Renal and Urinary System Anomalies (NEWLY ADDED)
+            { code: 'Q60.0', description: 'Renal agenesis, unilateral' },
+            { code: 'Q60.1', description: 'Renal agenesis, bilateral' },
+            { code: 'Q60.2', description: 'Renal agenesis, unspecified' },
+            { code: 'Q60.3', description: 'Renal hypoplasia, unilateral' },
+            { code: 'Q60.4', description: 'Renal hypoplasia, bilateral' },
+            { code: 'Q60.5', description: 'Renal hypoplasia, unspecified' },
+            { code: 'Q60.6', description: 'Potter syndrome' },
+            { code: 'Q61.0', description: 'Congenital renal cyst' },
+            { code: 'Q61.1', description: 'Polycystic kidney, infantile type' },
+            { code: 'Q61.2', description: 'Polycystic kidney, adult type' },
+            { code: 'Q61.3', description: 'Polycystic kidney, unspecified' },
+            { code: 'Q61.4', description: 'Renal dysplasia' },
+            { code: 'Q61.5', description: 'Medullary cystic kidney' },
+            { code: 'Q61.8', description: 'Other cystic kidney diseases' },
+            { code: 'Q61.9', description: 'Cystic kidney disease, unspecified' },
+            { code: 'Q62.0', description: 'Congenital hydronephrosis' },
+            { code: 'Q62.1', description: 'Atresia and stenosis of ureter' },
+            { code: 'Q62.2', description: 'Congenital megaureter' },
+            { code: 'Q62.3', description: 'Other obstructive defects of renal pelvis and ureter' },
+            { code: 'Q62.4', description: 'Agenesis of ureter' },
+            { code: 'Q62.5', description: 'Duplication of ureter' },
+            { code: 'Q62.6', description: 'Malposition of ureter' },
+            { code: 'Q62.7', description: 'Congenital vesico-uretero-renal reflux' },
+            { code: 'Q62.8', description: 'Other congenital malformations of ureter' },
+            { code: 'Q63.0', description: 'Accessory kidney' },
+            { code: 'Q63.1', description: 'Lobulated, fused and horseshoe kidney' },
+            { code: 'Q63.2', description: 'Ectopic kidney' },
+            { code: 'Q63.3', description: 'Hyperplastic and giant kidney' },
+            { code: 'Q63.8', description: 'Other specified congenital malformations of kidney' },
+            { code: 'Q63.9', description: 'Congenital malformation of kidney, unspecified' },
+            { code: 'Q64.0', description: 'Epispadias' },
+            { code: 'Q64.1', description: 'Exstrophy of urinary bladder' },
+            { code: 'Q64.2', description: 'Congenital posterior urethral valves' },
+            { code: 'Q64.3', description: 'Other atresia and stenosis of urethra and bladder neck' },
+            { code: 'Q64.4', description: 'Malformation of urachus' },
+            { code: 'Q64.5', description: 'Congenital absence of bladder and urethra' },
+            { code: 'Q64.6', description: 'Congenital diverticulum of bladder' },
+            { code: 'Q64.7', description: 'Other congenital malformations of bladder and urethra' },
+            { code: 'Q64.8', description: 'Other specified congenital malformations of urinary system' },
+            { code: 'Q64.9', description: 'Congenital malformation of urinary system, unspecified' }
+        ];
+
+        // Global variables
+        let currentPatientId = null;
+        let selectedDiagnoses = [];
+        let editSelectedDiagnoses = [];
+        let encounterSelectedDiagnoses = [];
+        let currentDocuments = [];
+        let cameraStream = null;
+        let cameraContext = null;
+        let currentCameraMode = null;
+        let currentPatientData = null;
+        let currentEditDemographicImage = null;
+        let currentEncounterIndex = 0;
+        let encounterDocuments = []; // Documents for current encounter (create/edit)
+        // When editing an encounter, this stores the index of the encounter in the patient's encounters array.
+        // If null, a new encounter is being created.
+        let editingEncounterIndex = null;
+
+        // Initialize the app and load the full ICD-10 dataset
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load the compressed ICD-10 data and build the codes list. Only leaf codes are included.
+            try {
+                const rawData = getIcd10Data();
+                const codes = [];
+                // Build the full ICD‑10 code list. Do not filter by the leaf flag so that
+                // high‑level categories and non-leaf codes are also included in the search.
+                // Each entry in rawData is [leaf, description]. We ignore the leaf flag
+                // here to include all codes.
+                for (const [code, value] of Object.entries(rawData)) {
+                    const desc = Array.isArray(value) ? value[1] : value;
+                    codes.push({ code: code, description: desc });
+                }
+                ICD10_CODES = codes;
+
+                // Custom synonyms for commonly searched pediatric conditions that are not
+                // present verbatim in the official ICD descriptions. These entries
+                // map informal or lay terms to the appropriate ICD code and its
+                // official description. This makes it easier for users to find the
+                // correct code when searching for terms like "imperforate anus" or
+                // "vesicoureteric reflux".
+                const SYNONYM_MAPPINGS = [
+                    // Map lay terms to appropriate ICD‑10 codes. The "description"
+                    // property contains the official description for the code. See
+                    // citations: imperforate anus (Q42.3) described as congenital
+                    // absence, atresia and stenosis of anus without fistula【83423551063360†L88-L99】;
+                    // Down syndrome/Trisomy 21 (Q90)【334121532234916†L81-L88】;
+                    // cholecystitis (K81)【704496855529447†L83-L92】;
+                    // biliary atresia (Q44.2)【571015899294716†L83-L133】;
+                    // biliary colic without cholecystitis (K80.20)【944659055737918†L44-L78】;
+                    // nephroblastoma/Wilms tumour (C64, C649)【855320536697475†L10-L20】;
+                    // malignant soft tissue neoplasm (C49.9)【89963858355711†L83-L92】;
+                    // ovarian malignancy (C56)【534816877299004†L100-L110】;
+                    // dermoid cyst/teratoma codes (D27.1, D27.9, D39.1)【808676091107747†L16-L73】;
+                    // pancreatitis (K85–K86)【706930264930762†L142-L156】;
+                    // urinary tract infection (N39.0)【931458813191279†L83-L88】;
+                    // vesicoureteral reflux (N13.7)【276703628438127†L83-L92】;
+                    // posterior urethral valves (Q64.2)【20862860298918†L83-L134】;
+                    // diaphragmatic hernia (Q79.0)【187295192097202†L83-L94】;
+                    // eventration of diaphragm (Q79.1)【116949910282178†L94-L100】.
+                    { term: 'imperforate anus', code: 'Q423', description: 'Congenital absence, atresia and stenosis of anus without fistula' },
+                    { term: 'trisomy 21', code: 'Q90', description: 'Down syndrome' },
+                    { term: 'cholecystitis', code: 'K81', description: 'Cholecystitis' },
+                    { term: 'biliary atresia', code: 'Q442', description: 'Atresia of bile ducts' },
+                    { term: 'biliary colic', code: 'K8020', description: 'Calculus of gallbladder without cholecystitis without obstruction' },
+                    { term: 'nephroblastoma', code: 'C649', description: 'Malignant neoplasm of unspecified kidney, except renal pelvis' },
+                    { term: 'soft tissue malignancy', code: 'C499', description: 'Malignant neoplasm of connective and soft tissue, unspecified' },
+                    { term: 'ovarian tumours', code: 'C56', description: 'Malignant neoplasm of ovary' },
+                    { term: 'teratomas', code: 'D391', description: 'Neoplasm of uncertain behavior of ovary' },
+                    { term: 'dermoid cysts', code: 'D279', description: 'Benign neoplasm of unspecified ovary' },
+                    { term: 'pancreatitis', code: 'K85', description: 'Acute pancreatitis' },
+                    { term: 'urinary tract infections', code: 'N390', description: 'Urinary tract infection, site not specified' },
+                    { term: 'vesicoureteric reflux', code: 'N137', description: 'Vesicoureteral-reflux' },
+                    { term: 'posterior urethral valves', code: 'Q642', description: 'Congenital posterior urethral valves' },
+                    { term: 'diaphragmatic hernia', code: 'Q790', description: 'Congenital diaphragmatic hernia' },
+                    { term: 'eventration', code: 'Q791', description: 'Other congenital malformations of diaphragm' }
+                ];
+                // Add synonyms to the ICD codes array. If a synonym’s code already
+                // exists in the list, it may create a duplicate entry. This is
+                // intentional so that searches using the synonym term will return
+                // results even if the official description does not contain the term.
+                for (const syn of SYNONYM_MAPPINGS) {
+                    // Prepend the lay term to the description so it will be matched
+                    // by the search function. This ensures that entering the
+                    // synonym term (e.g., "imperforate anus") will return the
+                    // corresponding ICD code.
+                    const descWithTerm = `${syn.term.charAt(0).toUpperCase() + syn.term.slice(1)} – ${syn.description}`;
+                    ICD10_CODES.push({ code: syn.code, description: descWithTerm });
+                }
+            } catch (e) {
+                console.error('Error loading ICD-10 data', e);
+            }
+            loadRecentPatients();
+            generatePatientId();
+        });
+
+        // Generate a new patient ID
+        function generatePatientId() {
+            const date = new Date();
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear().toString().substr(-2);
+            const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+            document.getElementById('newPatientId').textContent = `SBSCH${day}${month}${year}${random}`;
+        }
+
+        // Toggle encounter fields based on patient type
+        function toggleEncounterFields(type = 'new') {
+            const patientType = type === 'encounter' ? 
+                document.getElementById('encounterPatientType').value : 
+                document.getElementById('patientType').value;
+            
+            const outpatientFields = type === 'encounter' ? 
+                document.getElementById('encounterOutpatientFields') : 
+                document.getElementById('outpatientFields');
+            const inpatientFields = type === 'encounter' ? 
+                document.getElementById('encounterInpatientFields') : 
+                document.getElementById('inpatientFields');
+            const inpatientWardField = type === 'encounter' ? 
+                document.getElementById('encounterInpatientWardField') : 
+                document.getElementById('inpatientWardField');
+            const dischargeField = type === 'encounter' ? 
+                document.getElementById('encounterDischargeField') : 
+                document.getElementById('dischargeField');
+            
+            if (patientType === 'Outpatient') {
+                outpatientFields.classList.remove('hidden');
+                inpatientFields.classList.add('hidden');
+                inpatientWardField.classList.add('hidden');
+                dischargeField.classList.add('hidden');
+            } else {
+                outpatientFields.classList.add('hidden');
+                inpatientFields.classList.remove('hidden');
+                inpatientWardField.classList.remove('hidden');
+                dischargeField.classList.remove('hidden');
+            }
+        }
+
+        // View navigation functions
+        function showHome() {
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById('homeView').classList.remove('hidden');
+            loadRecentPatients();
+        }
+
+        function showNewPatient() {
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById('newPatientView').classList.remove('hidden');
+            generatePatientId();
+            selectedDiagnoses = [];
+            currentDocuments = [];
+            updateDiagnosisList();
+            updateNewPatientDocuments();
+            document.getElementById('extractedTextSection').classList.add('hidden');
+            toggleEncounterFields();
+        }
+
+        function showSearch() {
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById('searchView').classList.remove('hidden');
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchResults').innerHTML = '<p style="text-align: center; color: #666; padding: 30px;">Enter search terms above to find patients</p>';
+        }
+
+        function showPatient(id) {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patient = patients.find(p => p.id === id);
+            if (!patient) return;
+
+            currentPatientId = id;
+            currentPatientData = patient;
+
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById('patientView').classList.remove('hidden');
+
+            // Populate patient data
+            document.getElementById('patientName').textContent = patient.name || 'Unnamed Patient';
+            document.getElementById('patientId').textContent = patient.id;
+
+            // Populate demographics
+            const demographicsContainer = document.getElementById('patientDemographics');
+            
+            // Get all encounter dates
+            let encounterDates = [];
+            if (patient.encounters && patient.encounters.length > 0) {
+                encounterDates = patient.encounters.map(e => e.createdAt || e.date);
+            }
+            
+            // Format dates for display
+            const formattedDates = encounterDates.map(date => {
+                return new Date(date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            });
+            
+            demographicsContainer.innerHTML = `
+                <div class="info-card">
+                    <p>Date of Birth</p>
+                    <p>${patient.dob || 'Not specified'}</p>
+                </div>
+                <div class="info-card">
+                    <p>Age</p>
+                    <p>${patient.age || 'Not specified'}</p>
+                </div>
+                <div class="info-card">
+                    <p>Sex</p>
+                    <p>${patient.sex || 'Not specified'}</p>
+                </div>
+                <div class="info-card">
+                    <p>Contact Number</p>
+                    <p>${patient.contact || 'Not specified'}</p>
+                </div>
+                <div class="info-card">
+                    <p>Address</p>
+                    <p>${patient.address || 'Not specified'}</p>
+                </div>
+                <div class="info-card">
+                    <p>Birth Weight</p>
+                    <p>${patient.birthWeight || 'Not specified'}</p>
+                </div>
+                <div class="info-card">
+                    <p>Gestation</p>
+                    <p>${patient.gestation || 'Not specified'}</p>
+                </div>
+                <div class="info-card">
+                    <p>Patient Created</p>
+                    <p>${new Date(patient.createdAt).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                    })}</p>
+                </div>
+                ${formattedDates.length > 0 ? `
+                <div class="info-card">
+                    <p>Encounter Dates</p>
+                    <p>${formattedDates.join('<br>')}</p>
+                </div>
+                ` : ''}
+            `;
+
+            // Populate encounters
+            displayEncounters(patient);
+
+            // Populate documents
+            updatePatientDocuments();
+
+            // Show demographic photo if available
+            const photoSection = document.getElementById('demographicPhotoSection');
+            if (patient.demographicPhoto) {
+                photoSection.innerHTML = `
+                    <h3 style="margin-bottom: 15px;">Demographic Document</h3>
+                    <div class="image-container">
+                        <img src="${patient.demographicPhoto}" alt="Demographic Document" style="max-width: 100%; border-radius: 8px; border: 2px solid #ddd;">
+                    </div>
+                `;
+            } else {
+                photoSection.innerHTML = '';
+            }
+        }
+
+        function displayEncounters(patient) {
+            const tabsContainer = document.getElementById('encounterTabs');
+            const contentContainer = document.getElementById('encounterContent');
+            
+            tabsContainer.innerHTML = '';
+            contentContainer.innerHTML = '';
+            
+            if (!patient.encounters || patient.encounters.length === 0) {
+                contentContainer.innerHTML = '<p style="text-align: center; color: #666; padding: 30px;">No encounters recorded</p>';
+                return;
+            }
+            
+            // Build an array of objects with original index for sorting. We keep the original index so that
+            // the Edit button can target the correct encounter in the patient.encounters array.
+            const encountersWithIndex = patient.encounters.map((enc, idx) => ({ enc, idx }));
+            // Sort by date (newest first)
+            const sortedEncounters = encountersWithIndex.sort((a, b) => {
+                const dateA = new Date(a.enc.dateAdmission || a.enc.date);
+                const dateB = new Date(b.enc.dateAdmission || b.enc.date);
+                return dateB - dateA;
+            });
+            
+            sortedEncounters.forEach((item, index) => {
+                const { enc: encounter, idx: origIndex } = item;
+                const tab = document.createElement('div');
+                tab.className = `encounter-tab ${index === 0 ? 'active' : ''}`;
+                tab.textContent = getEncounterLabel(encounter, index);
+                tab.onclick = () => switchEncounterTab(index);
+                tabsContainer.appendChild(tab);
+                
+                const content = document.createElement('div');
+                content.className = `encounter-content ${index === 0 ? 'active' : ''}`;
+                content.id = `encounter-${index}`;
+                // Pass the original index into the HTML generator so that Edit works correctly
+                content.innerHTML = generateEncounterHTML(encounter, origIndex);
+                contentContainer.appendChild(content);
+            });
+            
+            currentEncounterIndex = 0;
+        }
+
+        function getEncounterLabel(encounter, index) {
+            const type = encounter.patientType || 'Encounter';
+            const date = encounter.dateAdmission || encounter.date || 'Unknown date';
+            const location = encounter.location || 'SBSCH';
+            if (type === 'Outpatient') {
+                const visitNumber = encounter.visitNumber || (index + 1);
+                return `OP #${visitNumber} (${location})`;
+            } else {
+                const admissionNumber = encounter.admissionNumber || (index + 1);
+                return `IP #${admissionNumber} (${location})`;
+            }
+        }
+
+        function switchEncounterTab(index) {
+            document.querySelectorAll('.encounter-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.encounter-content').forEach(content => content.classList.remove('active'));
+            
+            document.querySelectorAll('.encounter-tab')[index].classList.add('active');
+            document.getElementById(`encounter-${index}`).classList.add('active');
+            
+            currentEncounterIndex = index;
+        }
+
+        // Generate the HTML for an encounter. The second argument is the original index of the encounter
+        // in the patient's encounters array. This value is used for editing the encounter.
+        function generateEncounterHTML(encounter, origIndex) {
+            const diagnosesHTML = encounter.diagnoses && encounter.diagnoses.length > 0 ? 
+                encounter.diagnoses.map(d => `
+                    <div class="diagnosis-item">
+                        <div>
+                            ${d.code ? `<strong>${d.code}</strong> - ` : ''}${d.description}
+                        </div>
+                    </div>
+                `).join('') : 
+                '<p style="text-align: center; color: #666; padding: 15px;">No diagnoses recorded</p>';
+            
+            const encounterDate = new Date(encounter.createdAt || encounter.date).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+            
+            // Display encounter documents if any
+            const documentsHTML = encounter.documents && encounter.documents.length > 0 ? 
+                encounter.documents.map(doc => `
+                    <div class="doc-item">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                            <div>
+                                <strong>${doc.type}</strong>
+                                <div style="font-size: 14px; color: #666;">${doc.date}</div>
+                            </div>
+                        </div>
+                        ${doc.image ? `<img src="${doc.image}" style="max-width: 200px; max-height: 200px; border-radius: 6px; margin-bottom: 10px;">` : ''}
+                        ${doc.text ? `<div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px;">${doc.text}</div>` : ''}
+                    </div>
+                `).join('') : 
+                '<p style="text-align: center; color: #666; padding: 15px;">No documents for this encounter</p>';
+            
+            return `
+                <div class="encounter-header">
+                    <h3>${encounter.patientType === 'Outpatient' ? 'Outpatient Visit' : 'Inpatient Admission'} Details</h3>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="color: #666; font-size: 14px;">Created: ${encounterDate}</span>
+                        <!-- Edit button for this encounter -->
+                        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 14px;" onclick="startEditEncounter(${origIndex})">✏️ Edit</button>
+                    </div>
+                </div>
+                <div class="grid-4">
+                    <div class="info-card">
+                        <p>Location</p>
+                        <p>${encounter.location || 'SBSCH'}</p>
+                    </div>
+                    <div class="info-card">
+                        <p>Patient Type</p>
+                        <p>${encounter.patientType || 'Not specified'}</p>
+                    </div>
+                    ${encounter.patientType === 'Outpatient' ? `
+                    <div class="info-card">
+                        <p>Visit Number</p>
+                        <p>${encounter.visitNumber || 'Not specified'}</p>
+                    </div>
+                    ` : `
+                    <div class="info-card">
+                        <p>Admission Number</p>
+                        <p>${encounter.admissionNumber || 'Not specified'}</p>
+                    </div>
+                    `}
+                    ${encounter.patientType === 'Inpatient' ? `
+                    <div class="info-card">
+                        <p>Ward</p>
+                        <p>${encounter.ward || 'Not specified'}</p>
+                    </div>
+                    ` : ''}
+                    <div class="info-card">
+                        <p>Admission Type</p>
+                        <p>${encounter.admissionType || 'Not specified'}</p>
+                    </div>
+                    <div class="info-card">
+                        <p>Date of Admission/Visit</p>
+                        <p>${encounter.dateAdmission || 'Not specified'}</p>
+                    </div>
+                    ${encounter.patientType === 'Inpatient' ? `
+                    <div class="info-card">
+                        <p>Date of Discharge</p>
+                        <p>${encounter.dateDischarge || 'Not discharged'}</p>
+                    </div>
+                    ` : ''}
+                    <div class="info-card">
+                        <p>Weight</p>
+                        <p>${encounter.weight || 'Not specified'}</p>
+                    </div>
+                </div>
+                <h3 style="margin: 25px 0 15px 0;">Diagnoses</h3>
+                <div>${diagnosesHTML}</div>
+                <h3 style="margin: 25px 0 15px 0;">Documents</h3>
+                <div>${documentsHTML}</div>
+            `;
+        }
+
+        function editPatient() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patient = patients.find(p => p.id === currentPatientId);
+            if (!patient) return;
+
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById('editPatientView').classList.remove('hidden');
+
+            // Populate edit form
+            document.getElementById('editPatientId').textContent = patient.id;
+            document.getElementById('editName').value = patient.name || '';
+            document.getElementById('editDob').value = patient.dob || '';
+            document.getElementById('editAge').value = patient.age || '';
+            document.getElementById('editSex').value = patient.sex || '';
+            document.getElementById('editContact').value = patient.contact || '';
+            document.getElementById('editAddress').value = patient.address || '';
+            document.getElementById('editWeight').value = patient.weight || '';
+            document.getElementById('editBirthWeight').value = patient.birthWeight || '';
+            document.getElementById('editGestation').value = patient.gestation || '';
+
+            // Set demographic image if exists
+            if (patient.demographicPhoto) {
+                document.getElementById('editDemoImagePreview').innerHTML = `
+                    <img src="${patient.demographicPhoto}" class="image-preview">
+                `;
+                currentEditDemographicImage = patient.demographicPhoto;
+            }
+        }
+
+        function addNewEncounter() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patient = patients.find(p => p.id === currentPatientId);
+            if (!patient) return;
+
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById('newEncounterView').classList.remove('hidden');
+
+            // Populate encounter form with patient data
+            document.getElementById('encounterPatientId').textContent = patient.id;
+            document.getElementById('encounterPatientName').textContent = patient.name || 'Unnamed Patient';
+            
+            // Calculate next encounter numbers
+            const outpatientEncounters = patient.encounters ? 
+                patient.encounters.filter(e => e.patientType === 'Outpatient') : [];
+            const inpatientEncounters = patient.encounters ? 
+                patient.encounters.filter(e => e.patientType === 'Inpatient') : [];
+            
+            const nextVisitNumber = outpatientEncounters.length + 1;
+            const nextAdmissionNumber = inpatientEncounters.length + 1;
+            
+            document.getElementById('encounterVisitNumber').value = nextVisitNumber;
+            document.getElementById('encounterAdmissionNumber').value = nextAdmissionNumber;
+            
+            // Pre-populate with previous diagnoses if available
+            if (patient.encounters && patient.encounters.length > 0) {
+                // Get diagnoses from the most recent encounter
+                const latestEncounter = patient.encounters[patient.encounters.length - 1];
+                if (latestEncounter.diagnoses) {
+                    encounterSelectedDiagnoses = [...latestEncounter.diagnoses];
+                    updateEncounterDiagnosisList();
+                }
+            }
+            
+            // Reset encounter documents
+            encounterDocuments = [];
+            updateEncounterDocuments();
+            
+            // Reset other form fields
+            document.getElementById('encounterPatientType').value = 'Outpatient';
+            document.getElementById('encounterLocation').value = 'SBSCH';
+            document.getElementById('encounterWard').value = '';
+            document.getElementById('encounterAdmissionType').value = '';
+            document.getElementById('encounterDateAdmission').value = '';
+            document.getElementById('encounterDateDischarge').value = '';
+            document.getElementById('encounterWeight').value = patient.weight || '';
+            
+            toggleEncounterFields('encounter');
+        }
+
+        /**
+         * Begin editing an existing encounter. This will repurpose the New Encounter form to allow editing
+         * of all encounter details, diagnoses and documents. The fields will be pre-populated with the
+         * existing encounter's data. When the user clicks Save, the encounter will be updated instead
+         * of creating a new one.
+         * @param {number} index - the index of the encounter within the current patient's encounters array
+         */
+        function startEditEncounter(index) {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patient = patients.find(p => p.id === currentPatientId);
+            if (!patient) return;
+            // Guard against invalid index
+            if (!patient.encounters || index < 0 || index >= patient.encounters.length) return;
+            const encounter = patient.encounters[index];
+            // Set the editing index so saveEncounter knows to update instead of append
+            editingEncounterIndex = index;
+
+            // Show the New Encounter view (we reuse the same form for editing)
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById('newEncounterView').classList.remove('hidden');
+
+            // Populate patient info
+            document.getElementById('encounterPatientId').textContent = patient.id;
+            document.getElementById('encounterPatientName').textContent = patient.name || 'Unnamed Patient';
+
+            // Populate type and location
+            document.getElementById('encounterPatientType').value = encounter.patientType || 'Outpatient';
+            document.getElementById('encounterLocation').value = encounter.location || 'SBSCH';
+
+            // Admission/visit numbers
+            if (encounter.patientType === 'Outpatient') {
+                document.getElementById('encounterVisitNumber').value = encounter.visitNumber || 1;
+            } else {
+                document.getElementById('encounterAdmissionNumber').value = encounter.admissionNumber || 1;
+                document.getElementById('encounterWard').value = encounter.ward || '';
+            }
+
+            // Admission type and dates
+            document.getElementById('encounterAdmissionType').value = encounter.admissionType || '';
+            document.getElementById('encounterDateAdmission').value = encounter.dateAdmission || '';
+            document.getElementById('encounterDateDischarge').value = encounter.dateDischarge || '';
+
+            // Weight
+            document.getElementById('encounterWeight').value = encounter.weight || patient.weight || '';
+
+            // Load diagnoses
+            encounterSelectedDiagnoses = Array.isArray(encounter.diagnoses) ? [...encounter.diagnoses] : [];
+            updateEncounterDiagnosisList();
+
+            // Load documents
+            encounterDocuments = Array.isArray(encounter.documents) ? [...encounter.documents] : [];
+            updateEncounterDocuments();
+
+            // Ensure correct fields are shown based on patient type
+            toggleEncounterFields('encounter');
+        }
+
+        function cancelEdit() {
+            showPatient(currentPatientId);
+        }
+
+        function cancelEncounter() {
+            // If editing was in progress, reset the editing index
+            editingEncounterIndex = null;
+            showPatient(currentPatientId);
+        }
+
+        // Camera functionality
+        function openCamera(mode) {
+            currentCameraMode = mode;
+            const modal = document.getElementById('cameraModal');
+            const video = document.getElementById('cameraVideo');
+            
+            modal.classList.add('active');
+            
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(stream => {
+                    cameraStream = stream;
+                    video.srcObject = stream;
+                })
+                .catch(err => {
+                    console.error('Error accessing camera:', err);
+                    alert('Unable to access camera. Please check permissions.');
+                    closeCamera();
+                });
+        }
+
+        function closeCamera() {
+            const modal = document.getElementById('cameraModal');
+            const video = document.getElementById('cameraVideo');
+            
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            modal.classList.remove('active');
+        }
+
+        function capturePhoto() {
+            const video = document.getElementById('cameraVideo');
+            const canvas = document.getElementById('cameraCanvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            const imageData = canvas.toDataURL('image/jpeg');
+            
+            closeCamera();
+            
+            if (currentCameraMode === 'demographics') {
+                document.getElementById('demoImagePreview').innerHTML = `
+                    <img src="${imageData}" class="image-preview">
+                `;
+            } else if (currentCameraMode === 'editDemographics') {
+                document.getElementById('editDemoImagePreview').innerHTML = `
+                    <img src="${imageData}" class="image-preview">
+                `;
+                currentEditDemographicImage = imageData;
+            } else if (currentCameraMode === 'document') {
+                addDocumentImage(imageData);
+            } else if (currentCameraMode === 'newPatientDoc') {
+                addNewPatientDocumentImage(imageData);
+            } else if (currentCameraMode === 'encounterDoc') {
+                // NEW: Handle encounter document photo
+                addEncounterDocumentImage(imageData);
+            }
+        }
+
+        // Handle file uploads
+        function handleDemoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                document.getElementById('demoImagePreview').innerHTML = `
+                    <img src="${imageData}" class="image-preview">
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleEditDemoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                document.getElementById('editDemoImagePreview').innerHTML = `
+                    <img src="${imageData}" class="image-preview">
+                `;
+                currentEditDemographicImage = imageData;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleDocUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                addDocumentImage(imageData);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleNewPatientDocUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                addNewPatientDocumentImage(imageData);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // NEW: Handle encounter document upload
+        function handleEncounterDocUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const imageData = e.target.result;
+                addEncounterDocumentImage(imageData);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Age calculation
+        function calculateAge() {
+            const dob = document.getElementById('dob').value;
+            if (!dob) return;
+            
+            const birthDate = new Date(dob);
+            const today = new Date();
+            
+            let years = today.getFullYear() - birthDate.getFullYear();
+            let months = today.getMonth() - birthDate.getMonth();
+            let days = today.getDate() - birthDate.getDate();
+            
+            // Adjust for negative days
+            if (days < 0) {
+                months--;
+                // Get the last day of the previous month
+                const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+                days += lastDayOfMonth;
+            }
+            
+            // Adjust for negative months
+            if (months < 0) {
+                years--;
+                months += 12;
+            }
+            
+            let ageText = '';
+            if (years > 0) {
+                ageText = `${years} year${years > 1 ? 's' : ''}`;
+                if (months > 0) {
+                    ageText += `, ${months} month${months > 1 ? 's' : ''}`;
+                }
+            } else if (months > 0) {
+                ageText = `${months} month${months > 1 ? 's' : ''}`;
+                if (days > 0) {
+                    ageText += `, ${days} day${days > 1 ? 's' : ''}`;
+                }
+            } else {
+                ageText = `${days} day${days > 1 ? 's' : ''}`;
+            }
+            
+            document.getElementById('age').value = ageText;
+        }
+
+        function calculateEditAge() {
+            const dob = document.getElementById('editDob').value;
+            if (!dob) return;
+            
+            const birthDate = new Date(dob);
+            const today = new Date();
+            
+            let years = today.getFullYear() - birthDate.getFullYear();
+            let months = today.getMonth() - birthDate.getMonth();
+            let days = today.getDate() - birthDate.getDate();
+            
+            // Adjust for negative days
+            if (days < 0) {
+                months--;
+                // Get the last day of the previous month
+                const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+                days += lastDayOfMonth;
+            }
+            
+            // Adjust for negative months
+            if (months < 0) {
+                years--;
+                months += 12;
+            }
+            
+            let ageText = '';
+            if (years > 0) {
+                ageText = `${years} year${years > 1 ? 's' : ''}`;
+                if (months > 0) {
+                    ageText += `, ${months} month${months > 1 ? 's' : ''}`;
+                }
+            } else if (months > 0) {
+                ageText = `${months} month${months > 1 ? 's' : ''}`;
+                if (days > 0) {
+                    ageText += `, ${days} day${days > 1 ? 's' : ''}`;
+                }
+            } else {
+                ageText = `${days} day${days > 1 ? 's' : ''}`;
+            }
+            
+            document.getElementById('editAge').value = ageText;
+        }
+
+        // ICD Code Search
+        function searchICD(query, mode = 'new') {
+            const resultsId = mode === 'edit' ? 'editIcdResults' : 
+                             mode === 'encounter' ? 'encounterIcdResults' : 'icdResults';
+            const resultsContainer = document.getElementById(resultsId);
+            
+            if (!query || query.length < 2) {
+                resultsContainer.classList.add('hidden');
+                return;
+            }
+            
+            const filtered = ICD10_CODES.filter(item => 
+                item.code.toLowerCase().includes(query.toLowerCase()) || 
+                item.description.toLowerCase().includes(query.toLowerCase())
+            ).slice(0, 10); // Limit to 10 results
+            
+            if (filtered.length === 0) {
+                resultsContainer.innerHTML = '<div class="icd-item">No matching ICD codes found</div>';
+            } else {
+                resultsContainer.innerHTML = '';
+                filtered.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'icd-item';
+                    div.innerHTML = `<strong>${item.code}</strong> - ${item.description}`;
+                    div.onclick = () => selectICD(item, mode);
+                    resultsContainer.appendChild(div);
+                });
+            }
+            
+            resultsContainer.classList.remove('hidden');
+        }
+
+        // Select ICD code
+        function selectICD(item, mode = 'new') {
+            let diagnoses;
+            if (mode === 'edit') {
+                diagnoses = editSelectedDiagnoses;
+            } else if (mode === 'encounter') {
+                diagnoses = encounterSelectedDiagnoses;
+            } else {
+                diagnoses = selectedDiagnoses;
+            }
+            
+            if (diagnoses.length >= 10) {
+                alert('Maximum of 10 diagnoses allowed');
+                return;
+            }
+            
+            // Check if already added
+            if (diagnoses.some(d => d.code === item.code)) {
+                alert('This diagnosis is already added');
+                return;
+            }
+            
+            diagnoses.push({
+                code: item.code,
+                description: item.description
+            });
+            
+            if (mode === 'edit') {
+                document.getElementById('editIcdSearch').value = '';
+                document.getElementById('editIcdResults').classList.add('hidden');
+                updateEditDiagnosisList();
+            } else if (mode === 'encounter') {
+                document.getElementById('encounterIcdSearch').value = '';
+                document.getElementById('encounterIcdResults').classList.add('hidden');
+                updateEncounterDiagnosisList();
+            } else {
+                document.getElementById('icdSearch').value = '';
+                document.getElementById('icdResults').classList.add('hidden');
+                updateDiagnosisList();
+            }
+        }
+
+        // Add free text diagnosis
+        function addFreeTextDiagnosis(mode = 'new') {
+            let inputId, diagnoses;
+            if (mode === 'edit') {
+                inputId = 'editFreeTextDiagnosis';
+                diagnoses = editSelectedDiagnoses;
+            } else if (mode === 'encounter') {
+                inputId = 'encounterFreeTextDiagnosis';
+                diagnoses = encounterSelectedDiagnoses;
+            } else {
+                inputId = 'freeTextDiagnosis';
+                diagnoses = selectedDiagnoses;
+            }
+            
+            const input = document.getElementById(inputId);
+            const description = input.value.trim();
+            
+            if (!description) {
+                alert('Please enter a diagnosis description');
+                return;
+            }
+            
+            if (diagnoses.length >= 10) {
+                alert('Maximum of 10 diagnoses allowed');
+                return;
+            }
+            
+            diagnoses.push({
+                code: '',
+                description: description
+            });
+            
+            input.value = '';
+            
+            if (mode === 'edit') {
+                updateEditDiagnosisList();
+            } else if (mode === 'encounter') {
+                updateEncounterDiagnosisList();
+            } else {
+                updateDiagnosisList();
+            }
+        }
+
+        // Update diagnosis list display
+        function updateDiagnosisList() {
+            const container = document.getElementById('selectedDiagnoses');
+            const counter = document.getElementById('diagnosisCounter');
+            
+            container.innerHTML = '';
+            
+            if (selectedDiagnoses.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 15px;">No diagnoses added yet</p>';
+            } else {
+                selectedDiagnoses.forEach((diagnosis, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'diagnosis-item';
+                    div.innerHTML = `
+                        <div>
+                            ${diagnosis.code ? `<strong>${diagnosis.code}</strong> - ` : ''}${diagnosis.description}
+                        </div>
+                        <button class="btn btn-danger" onclick="removeDiagnosis(${index})">❌ Remove</button>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+            
+            counter.textContent = `${selectedDiagnoses.length} / 10 diagnoses added`;
+        }
+
+        function updateEditDiagnosisList() {
+            const container = document.getElementById('editSelectedDiagnoses');
+            const counter = document.getElementById('editDiagnosisCounter');
+            
+            container.innerHTML = '';
+            
+            if (editSelectedDiagnoses.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 15px;">No diagnoses added yet</p>';
+            } else {
+                editSelectedDiagnoses.forEach((diagnosis, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'diagnosis-item';
+                    div.innerHTML = `
+                        <div>
+                            ${diagnosis.code ? `<strong>${diagnosis.code}</strong> - ` : ''}${diagnosis.description}
+                        </div>
+                        <button class="btn btn-danger" onclick="removeEditDiagnosis(${index})">❌ Remove</button>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+            
+            counter.textContent = `${editSelectedDiagnoses.length} / 10 diagnoses added`;
+        }
+
+        function updateEncounterDiagnosisList() {
+            const container = document.getElementById('encounterSelectedDiagnoses');
+            const counter = document.getElementById('encounterDiagnosisCounter');
+            
+            container.innerHTML = '';
+            
+            if (encounterSelectedDiagnoses.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 15px;">No diagnoses added yet</p>';
+            } else {
+                encounterSelectedDiagnoses.forEach((diagnosis, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'diagnosis-item';
+                    div.innerHTML = `
+                        <div>
+                            ${diagnosis.code ? `<strong>${diagnosis.code}</strong> - ` : ''}${diagnosis.description}
+                        </div>
+                        <button class="btn btn-danger" onclick="removeEncounterDiagnosis(${index})">❌ Remove</button>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+            
+            counter.textContent = `${encounterSelectedDiagnoses.length} / 10 diagnoses added`;
+        }
+
+        // Remove diagnosis
+        function removeDiagnosis(index) {
+            selectedDiagnoses.splice(index, 1);
+            updateDiagnosisList();
+        }
+
+        function removeEditDiagnosis(index) {
+            editSelectedDiagnoses.splice(index, 1);
+            updateEditDiagnosisList();
+        }
+
+        function removeEncounterDiagnosis(index) {
+            encounterSelectedDiagnoses.splice(index, 1);
+            updateEncounterDiagnosisList();
+        }
+
+        // Document management
+        function addDocumentImage(imageData) {
+            const docType = document.getElementById('docType').value;
+            if (!docType) {
+                alert('Please select a document type first');
+                return;
+            }
+            
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patientIndex = patients.findIndex(p => p.id === currentPatientId);
+            
+            if (patientIndex === -1) return;
+            
+            if (!patients[patientIndex].documents) {
+                patients[patientIndex].documents = [];
+            }
+            
+            const docId = 'doc_' + Date.now();
+            patients[patientIndex].documents.push({
+                id: docId,
+                type: docType,
+                image: imageData,
+                text: '',
+                date: new Date().toISOString().split('T')[0]
+            });
+            
+            localStorage.setItem('patients', JSON.stringify(patients));
+            updatePatientDocuments();
+            
+            // Reset form
+            document.getElementById('docType').value = '';
+            document.getElementById('docUploadSection').classList.add('hidden');
+        }
+
+        function addNewPatientDocumentImage(imageData) {
+            const docType = document.getElementById('newPatientDocType').value;
+            if (!docType) {
+                alert('Please select a document type first');
+                return;
+            }
+            
+            const docId = 'doc_' + Date.now();
+            currentDocuments.push({
+                id: docId,
+                type: docType,
+                image: imageData,
+                text: '',
+                date: new Date().toISOString().split('T')[0]
+            });
+            
+            updateNewPatientDocuments();
+            
+            // Reset form
+            document.getElementById('newPatientDocType').value = '';
+        }
+
+        // NEW: Add image document to encounter
+        function addEncounterDocumentImage(imageData) {
+            const docType = document.getElementById('encounterDocType').value;
+            if (!docType) {
+                alert('Please select a document type first');
+                return;
+            }
+            
+            const docId = 'doc_' + Date.now();
+            encounterDocuments.push({
+                id: docId,
+                type: docType,
+                image: imageData,
+                text: '',
+                date: new Date().toISOString().split('T')[0]
+            });
+            
+            updateEncounterDocuments();
+            
+            // Reset form
+            document.getElementById('encounterDocType').value = '';
+        }
+
+        function addManualDocument() {
+            const docType = document.getElementById('docType').value;
+            const text = document.getElementById('manualDocText').value.trim();
+            
+            if (!docType) {
+                alert('Please select a document type');
+                return;
+            }
+            
+            if (!text) {
+                alert('Please enter document content');
+                return;
+            }
+            
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patientIndex = patients.findIndex(p => p.id === currentPatientId);
+            
+            if (patientIndex === -1) return;
+            
+            if (!patients[patientIndex].documents) {
+                patients[patientIndex].documents = [];
+            }
+            
+            const docId = 'doc_' + Date.now();
+            patients[patientIndex].documents.push({
+                id: docId,
+                type: docType,
+                image: '',
+                text: text,
+                date: new Date().toISOString().split('T')[0]
+            });
+            
+            localStorage.setItem('patients', JSON.stringify(patients));
+            updatePatientDocuments();
+            
+            // Reset form
+            document.getElementById('docType').value = '';
+            document.getElementById('manualDocText').value = '';
+            document.getElementById('docUploadSection').classList.add('hidden');
+        }
+
+        function addManualDocumentToNewPatient() {
+            const docType = document.getElementById('newPatientDocType').value;
+            const text = document.getElementById('newPatientManualDocText').value.trim();
+            
+            if (!docType) {
+                alert('Please select a document type');
+                return;
+            }
+            
+            if (!text) {
+                alert('Please enter document content');
+                return;
+            }
+            
+            const docId = 'doc_' + Date.now();
+            currentDocuments.push({
+                id: docId,
+                type: docType,
+                image: '',
+                text: text,
+                date: new Date().toISOString().split('T')[0]
+            });
+            
+            updateNewPatientDocuments();
+            
+            // Reset form
+            document.getElementById('newPatientDocType').value = '';
+            document.getElementById('newPatientManualDocText').value = '';
+        }
+
+        // NEW: Add manual document to encounter
+        function addManualDocumentToEncounter() {
+            const docType = document.getElementById('encounterDocType').value;
+            const text = document.getElementById('encounterManualDocText').value.trim();
+            
+            if (!docType) {
+                alert('Please select a document type');
+                return;
+            }
+            
+            if (!text) {
+                alert('Please enter document content');
+                return;
+            }
+            
+            const docId = 'doc_' + Date.now();
+            encounterDocuments.push({
+                id: docId,
+                type: docType,
+                image: '',
+                text: text,
+                date: new Date().toISOString().split('T')[0]
+            });
+            
+            updateEncounterDocuments();
+            
+            // Reset form
+            document.getElementById('encounterDocType').value = '';
+            document.getElementById('encounterManualDocText').value = '';
+        }
+
+        function updatePatientDocuments() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patient = patients.find(p => p.id === currentPatientId);
+            if (!patient) return;
+            
+            const container = document.getElementById('patientDocuments');
+            container.innerHTML = '';
+            
+            if (!patient.documents || patient.documents.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 30px;">No documents uploaded yet</p>';
+                return;
+            }
+            
+            patient.documents.forEach(doc => {
+                const docItem = document.createElement('div');
+                docItem.className = 'doc-item';
+                docItem.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <strong>${doc.type}</strong>
+                            <div style="font-size: 14px; color: #666;">${doc.date}</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteDocument('${doc.id}')">🗑️ Delete</button>
+                    </div>
+                    ${doc.image ? `<img src="${doc.image}" style="max-width: 200px; max-height: 200px; border-radius: 6px; margin-bottom: 10px;">` : ''}
+                    ${doc.text ? `<div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px;">${doc.text}</div>` : ''}
+                `;
+                container.appendChild(docItem);
+            });
+        }
+
+        function updateNewPatientDocuments() {
+            const container = document.getElementById('newPatientDocuments');
+            container.innerHTML = '';
+            
+            if (currentDocuments.length === 0) {
+                return;
+            }
+            
+            container.innerHTML = '<h4 style="margin-bottom: 15px;">Documents to be saved with patient:</h4>';
+            
+            currentDocuments.forEach(doc => {
+                const docItem = document.createElement('div');
+                docItem.className = 'doc-item';
+                docItem.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <strong>${doc.type}</strong>
+                            <div style="font-size: 14px; color: #666;">${doc.date}</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteNewPatientDocument('${doc.id}')">🗑️ Remove</button>
+                    </div>
+                    ${doc.image ? `<img src="${doc.image}" style="max-width: 200px; max-height: 200px; border-radius: 6px; margin-bottom: 10px;">` : ''}
+                    ${doc.text ? `<div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px;">${doc.text}</div>` : ''}
+                `;
+                container.appendChild(docItem);
+            });
+        }
+
+        // NEW: Update encounter documents display
+        function updateEncounterDocuments() {
+            const container = document.getElementById('encounterDocuments');
+            container.innerHTML = '';
+            
+            if (encounterDocuments.length === 0) {
+                return;
+            }
+            
+            container.innerHTML = '<h4 style="margin-bottom: 15px;">Documents to be saved with encounter:</h4>';
+            
+            encounterDocuments.forEach(doc => {
+                const docItem = document.createElement('div');
+                docItem.className = 'doc-item';
+                docItem.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <strong>${doc.type}</strong>
+                            <div style="font-size: 14px; color: #666;">${doc.date}</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteEncounterDocument('${doc.id}')">🗑️ Remove</button>
+                    </div>
+                    ${doc.image ? `<img src="${doc.image}" style="max-width: 200px; max-height: 200px; border-radius: 6px; margin-bottom: 10px;">` : ''}
+                    ${doc.text ? `<div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px;">${doc.text}</div>` : ''}
+                `;
+                container.appendChild(docItem);
+            });
+        }
+
+        function deleteDocument(docId) {
+            if (!confirm('Are you sure you want to delete this document?')) return;
+            
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patientIndex = patients.findIndex(p => p.id === currentPatientId);
+            
+            if (patientIndex === -1) return;
+            
+            patients[patientIndex].documents = patients[patientIndex].documents.filter(d => d.id !== docId);
+            localStorage.setItem('patients', JSON.stringify(patients));
+            updatePatientDocuments();
+        }
+
+        function deleteNewPatientDocument(docId) {
+            currentDocuments = currentDocuments.filter(d => d.id !== docId);
+            updateNewPatientDocuments();
+        }
+
+        // NEW: Delete encounter document
+        function deleteEncounterDocument(docId) {
+            encounterDocuments = encounterDocuments.filter(d => d.id !== docId);
+            updateEncounterDocuments();
+        }
+
+        function toggleDocUpload() {
+            const section = document.getElementById('docUploadSection');
+            section.classList.toggle('hidden');
+        }
+
+        // Save patient
+        function savePatient() {
+            const patientId = document.getElementById('newPatientId').textContent;
+            const demographicPhoto = document.getElementById('demoImagePreview').querySelector('img')?.src || '';
+            
+            const patientType = document.getElementById('patientType').value;
+            const encounter = {
+                patientType: patientType,
+                location: document.getElementById('location').value,
+                admissionType: document.getElementById('admissionType').value,
+                dateAdmission: document.getElementById('dateAdmission').value,
+                dateDischarge: patientType === 'Inpatient' ? document.getElementById('dateDischarge').value : '',
+                weight: document.getElementById('weight').value,
+                diagnoses: [...selectedDiagnoses],
+                documents: currentDocuments, // Include documents with the encounter
+                date: new Date().toISOString(),
+                createdAt: new Date().toISOString()
+            };
+            
+            if (patientType === 'Outpatient') {
+                encounter.visitNumber = parseInt(document.getElementById('visitNumber').value) || 1;
+            } else {
+                encounter.admissionNumber = parseInt(document.getElementById('admissionNumber').value) || 1;
+                encounter.ward = document.getElementById('ward').value;
+            }
+            
+            const patient = {
+                id: patientId,
+                name: document.getElementById('name').value.trim(),
+                dob: document.getElementById('dob').value,
+                age: document.getElementById('age').value,
+                sex: document.getElementById('sex').value,
+                contact: document.getElementById('contact').value,
+                address: document.getElementById('address').value,
+                birthWeight: document.getElementById('birthWeight').value,
+                gestation: document.getElementById('gestation').value,
+                encounters: [encounter],
+                demographicPhoto: demographicPhoto,
+                createdAt: new Date().toISOString()
+            };
+            
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            patients.push(patient);
+            localStorage.setItem('patients', JSON.stringify(patients));
+            
+            alert('Patient saved successfully!');
+            showPatient(patientId);
+        }
+
+        function saveEditedPatient() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patientIndex = patients.findIndex(p => p.id === currentPatientId);
+            
+            if (patientIndex === -1) return;
+            
+            patients[patientIndex].name = document.getElementById('editName').value.trim();
+            patients[patientIndex].dob = document.getElementById('editDob').value;
+            patients[patientIndex].age = document.getElementById('editAge').value;
+            patients[patientIndex].sex = document.getElementById('editSex').value;
+            patients[patientIndex].contact = document.getElementById('editContact').value;
+            patients[patientIndex].address = document.getElementById('editAddress').value;
+            patients[patientIndex].weight = document.getElementById('editWeight').value;
+            patients[patientIndex].birthWeight = document.getElementById('editBirthWeight').value;
+            patients[patientIndex].gestation = document.getElementById('editGestation').value;
+            
+            if (currentEditDemographicImage) {
+                patients[patientIndex].demographicPhoto = currentEditDemographicImage;
+            }
+            
+            localStorage.setItem('patients', JSON.stringify(patients));
+            
+            alert('Patient details updated successfully!');
+            showPatient(currentPatientId);
+        }
+
+        function saveEncounter() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const patientIndex = patients.findIndex(p => p.id === currentPatientId);
+            
+            if (patientIndex === -1) return;
+            
+            const patientType = document.getElementById('encounterPatientType').value;
+            const encounter = {
+                patientType: patientType,
+                location: document.getElementById('encounterLocation').value,
+                admissionType: document.getElementById('encounterAdmissionType').value,
+                dateAdmission: document.getElementById('encounterDateAdmission').value,
+                dateDischarge: patientType === 'Inpatient' ? document.getElementById('encounterDateDischarge').value : '',
+                weight: document.getElementById('encounterWeight').value,
+                diagnoses: [...encounterSelectedDiagnoses],
+                documents: encounterDocuments, // NEW: Include encounter documents
+                date: new Date().toISOString(),
+                createdAt: new Date().toISOString()
+            };
+            
+            if (patientType === 'Outpatient') {
+                encounter.visitNumber = parseInt(document.getElementById('encounterVisitNumber').value) || 1;
+            } else {
+                encounter.admissionNumber = parseInt(document.getElementById('encounterAdmissionNumber').value) || 1;
+                encounter.ward = document.getElementById('encounterWard').value;
+            }
+            
+            if (!patients[patientIndex].encounters) {
+                patients[patientIndex].encounters = [];
+            }
+
+            // If editingEncounterIndex is set, update the existing encounter instead of pushing a new one
+            if (editingEncounterIndex !== null && editingEncounterIndex !== undefined) {
+                patients[patientIndex].encounters[editingEncounterIndex] = encounter;
+                editingEncounterIndex = null;
+                alert('Encounter updated successfully!');
+            } else {
+                patients[patientIndex].encounters.push(encounter);
+                alert('Encounter saved successfully!');
+            }
+            localStorage.setItem('patients', JSON.stringify(patients));
+            
+            showPatient(currentPatientId);
+        }
+
+        // Search functionality
+        function performSearch() {
+            const searchType = document.getElementById('searchType').value;
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            if (!query) {
+                alert('Please enter a search term');
+                return;
+            }
+            
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            let results = [];
+            
+            if (searchType === 'name') {
+                results = patients.filter(p => p.name && p.name.toLowerCase().includes(query));
+            } else if (searchType === 'id') {
+                results = patients.filter(p => p.id && p.id.toLowerCase().includes(query));
+            } else if (searchType === 'contact') {
+                results = patients.filter(p => p.contact && p.contact.toLowerCase().includes(query));
+            } else if (searchType === 'diagnosis') {
+                results = patients.filter(p => 
+                    p.encounters && p.encounters.some(e => 
+                        e.diagnoses && e.diagnoses.some(d => 
+                            d.description.toLowerCase().includes(query)
+                        )
+                    )
+                );
+            } else if (searchType === 'icd') {
+                results = patients.filter(p => 
+                    p.encounters && p.encounters.some(e => 
+                        e.diagnoses && e.diagnoses.some(d => 
+                            d.code && d.code.toLowerCase().includes(query)
+                        )
+                    )
+                );
+            }
+            
+            displaySearchResults(results);
+        }
+
+        function displaySearchResults(results) {
+            const container = document.getElementById('searchResults');
+            
+            if (results.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 30px;">No patients found matching your search</p>';
+                return;
+            }
+            
+            container.innerHTML = `<h3 style="margin-bottom: 15px;">Found ${results.length} patient(s)</h3>`;
+            
+            results.forEach(patient => {
+                const item = document.createElement('div');
+                item.className = 'patient-list-item';
+                item.onclick = () => showPatient(patient.id);
+                
+                let diagnosisText = '';
+                let latestEncounter = patient.encounters && patient.encounters.length > 0 ? 
+                    patient.encounters[patient.encounters.length - 1] : null;
+                
+                if (latestEncounter && latestEncounter.diagnoses && latestEncounter.diagnoses.length > 0) {
+                    diagnosisText = latestEncounter.diagnoses.map(d => d.code || d.description).join(', ');
+                    if (diagnosisText.length > 50) {
+                        diagnosisText = diagnosisText.substring(0, 50) + '...';
+                    }
+                }
+                
+                const encounterCount = patient.encounters ? patient.encounters.length : 0;
+                const inpatientCount = patient.encounters ? 
+                    patient.encounters.filter(e => e.patientType === 'Inpatient').length : 0;
+                const outpatientCount = patient.encounters ? 
+                    patient.encounters.filter(e => e.patientType === 'Outpatient').length : 0;
+                
+                item.innerHTML = `
+                    <div>
+                        <strong>${patient.name || 'Unnamed Patient'}</strong>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            ${patient.dob ? 'DOB: ' + patient.dob : ''} ${patient.sex ? ' | ' + patient.sex : ''}
+                        </div>
+                        <div style="font-size: 13px; color: #666; margin-top: 5px;">
+                            ${patient.contact ? '📞 ' + patient.contact : ''}
+                        </div>
+                        ${diagnosisText ? `<div style="font-size: 13px; color: #888; margin-top: 5px;">${diagnosisText}</div>` : ''}
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            Encounters: ${encounterCount} (IP: ${inpatientCount}, OP: ${outpatientCount})
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge badge-blue">${patient.id}</span>
+                    </div>
+                `;
+                
+                container.appendChild(item);
+            });
+        }
+
+        // Load recent patients
+        function loadRecentPatients() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            const container = document.getElementById('recentPatients');
+            
+            if (patients.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 30px;">No patients registered yet</p>';
+                return;
+            }
+            
+            // Sort by creation date (newest first)
+            const recentPatients = patients
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                .slice(0, 5); // Show only 5 most recent
+            
+            container.innerHTML = '';
+            
+            recentPatients.forEach(patient => {
+                const item = document.createElement('div');
+                item.className = 'patient-list-item';
+                item.onclick = () => showPatient(patient.id);
+                
+                let diagnosisText = '';
+                let latestEncounter = patient.encounters && patient.encounters.length > 0 ? 
+                    patient.encounters[patient.encounters.length - 1] : null;
+                
+                if (latestEncounter && latestEncounter.diagnoses && latestEncounter.diagnoses.length > 0) {
+                    diagnosisText = latestEncounter.diagnoses[0].code || latestEncounter.diagnoses[0].description;
+                    if (diagnosisText.length > 30) {
+                        diagnosisText = diagnosisText.substring(0, 30) + '...';
+                    }
+                }
+                
+                const encounterCount = patient.encounters ? patient.encounters.length : 0;
+                
+                item.innerHTML = `
+                    <div>
+                        <strong>${patient.name || 'Unnamed Patient'}</strong>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                            ${patient.dob ? 'DOB: ' + patient.dob : ''} ${patient.sex ? ' | ' + patient.sex : ''}
+                        </div>
+                        ${diagnosisText ? `<div style="font-size: 13px; color: #888; margin-top: 5px;">${diagnosisText}</div>` : ''}
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">
+                            ${encounterCount} encounter${encounterCount !== 1 ? 's' : ''}
+                        </div>
+                    </div>
+                    <div>
+                        <span class="badge badge-blue">${patient.id}</span>
+                    </div>
+                `;
+                
+                container.appendChild(item);
+            });
+        }
+
+        // Export database
+function exportDatabaseJSON() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            
+            if (patients.length === 0) {
+                alert('No patient data to export');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(patients, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `sbsch_patient_database_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            alert(`Exported ${patients.length} patient records`);
+        }
+
+        // Export database as Excel (.xlsx)
+        function exportDatabaseExcel() {
+            const patients = JSON.parse(localStorage.getItem('patients') || '[]');
+            if (patients.length === 0) {
+                alert('No patient data to export');
+                return;
+            }
+            // Create a new workbook
+            const wb = XLSX.utils.book_new();
+            // Build Patients sheet
+            const patientData = [['ID','Name','DOB','Age','Sex','Contact','Address','BirthWeight','Gestation']];
+            patients.forEach(p => {
+                patientData.push([p.id || '', p.name || '', p.dob || '', p.age || '', p.sex || '', p.contact || '', p.address || '', p.birthWeight || '', p.gestation || '']);
+            });
+            const wsPatients = XLSX.utils.aoa_to_sheet(patientData);
+            XLSX.utils.book_append_sheet(wb, wsPatients, 'Patients');
+            // Build Encounters sheet
+            const encounterData = [['PatientID','EncounterIndex','PatientType','Location','AdmissionType','DateAdmission','DateDischarge','Weight','VisitNumber','AdmissionNumber','Ward','Diagnoses','DocumentsCount']];
+            patients.forEach(p => {
+                if (p.encounters && Array.isArray(p.encounters)) {
+                    p.encounters.forEach((enc, idx) => {
+                        const diagStr = (enc.diagnoses || []).map(d => `${d.code} ${d.description}`).join('; ');
+                        const docsCount = (enc.documents || []).length;
+                        encounterData.push([
+                            p.id || '',
+                            idx + 1,
+                            enc.patientType || '',
+                            enc.location || '',
+                            enc.admissionType || '',
+                            enc.dateAdmission || '',
+                            enc.dateDischarge || '',
+                            enc.weight || '',
+                            enc.visitNumber || '',
+                            enc.admissionNumber || '',
+                            enc.ward || '',
+                            diagStr,
+                            docsCount
+                        ]);
+                    });
+                }
+            });
+            const wsEncounters = XLSX.utils.aoa_to_sheet(encounterData);
+            XLSX.utils.book_append_sheet(wb, wsEncounters, 'Encounters');
+            // Write the workbook to a file
+            const fileName = `sbsch_patient_database_${new Date().toISOString().split('T')[0]}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            alert(`Exported ${patients.length} patient records to Excel`);
+        }
+
+        // Close ICD results when clicking elsewhere
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#icdSearch')) {
+                document.getElementById('icdResults').classList.add('hidden');
+            }
+            if (!e.target.closest('#editIcdSearch')) {
+                document.getElementById('editIcdResults').classList.add('hidden');
+            }
+            if (!e.target.closest('#encounterIcdSearch')) {
+                document.getElementById('encounterIcdResults').classList.add('hidden');
+            }
+        });
+    </script>
+
+</body></html>

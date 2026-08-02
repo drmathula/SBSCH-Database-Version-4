@@ -9,6 +9,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- Google Identity Services (sign-in + Drive authorization) -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- PDF generation (discharge summary, patient ID card) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Excel export (research data export) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -129,7 +133,18 @@
     .photo-capture-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
     .photo-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; border: 2px solid #ddd; }
     .upload-status { font-size: 13px; color: #666; }
+    .rte-toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
+    .rte-toolbar button { border: 1px solid #ccc; background: white; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 14px; }
+    .rte-toolbar button.active { background: #1976d2; color: white; }
+    .rte-toolbar select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; }
+    .rte-editable { min-height: 120px; border: 1px solid #ddd; border-radius: 6px; padding: 12px; font-size: 15px; overflow-y: auto; }
+    .rte-editable:focus { outline: none; border-color: #1976d2; }
+    .med-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .med-row input { padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+    .encounter-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .encounter-actions button { padding: 6px 12px; font-size: 13px; }
     @media (max-width: 768px) {
+        .med-row { grid-template-columns: 1fr 1fr; }
         .encounter-tabs { flex-direction: column; }
         .diagnosis-input-group { flex-direction: column; align-items: stretch; }
     }
@@ -143,6 +158,13 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YnNrZm1uYnRpdXp2YWV6ZHRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1OTk1MDksImV4cCI6MjEwMTE3NTUwOX0.99Qkj0CuygDhaHDZRCjiFk75odN7G97uSWCDef9Hl2M";
     const GOOGLE_CLIENT_ID = "51019799508-s93vjepd9pdpgnqdivsmcom6uuq70anb.apps.googleusercontent.com";
     const DRIVE_FOLDER_NAME = "SBSCH Patient Documents";
+    const ICD10_FULL_PATH = "./icd10_full.json";
+    const LOGO_PATH = "./logo.png";
+    const HOSPITAL_NAME = "Sirimavo Bandaranaike Specialised Children's Hospital - Kandy";
+    const PROVIDER_NAME = "Dr. Mathula Hettiarachchi";
+    const PROVIDER_CREDENTIALS = "MBBS MD MRCS (Eng)";
+    const PROVIDER_SPECIALTY = "Consultant Paediatric Surgeon";
+    const PROVIDER_LICENSE = "SLMC 19629  |  GMC 7206553";
 </script>
 
 <div class="container">
@@ -203,6 +225,8 @@
                     <h2 id="detailPatientName"></h2>
                     <div class="btn-group">
                         <button class="btn btn-success" onclick="openNewEncounterModal()">➕ New Encounter</button>
+                        <button class="btn btn-purple" onclick="generateIdCardPDF()">🪪 ID Card</button>
+                        <button class="btn btn-danger" onclick="deleteCurrentPatient()">🗑️ Delete Patient</button>
                         <button class="btn btn-secondary" onclick="backToHome()">← Back</button>
                     </div>
                 </div>
@@ -264,16 +288,18 @@
                     <label>Admission Type</label>
                     <select class="form-control" id="np_admtype"><option value="">Select</option><option>Requested</option><option>Urgent</option><option>Acute</option><option>Neonatal</option></select>
                 </div>
-                <div class="form-group"><label>Date of Visit/Admission</label><input type="date" class="form-control" id="np_visitdate"></div>
+                <div class="form-group"><label>Date of Admission/Visit</label><input type="date" class="form-control" id="np_visitdate"></div>
+                <div class="form-group"><label>Date of Discharge</label><input type="date" class="form-control" id="np_dischargedate"></div>
                 <div class="form-group"><label>Current Weight (kg)</label><input type="number" step="0.01" class="form-control" id="np_weight"></div>
             </div>
+            <div class="form-group"><label>Reason for Admission/Visit</label><input class="form-control" id="np_reason" placeholder="e.g. Admitted for inguinal hernia repair"></div>
         </div>
 
         <div class="diagnosis-box">
             <h3 style="margin-bottom:10px;">Diagnoses (up to 10)</h3>
             <div class="form-group">
                 <label>Search ICD-10 Code</label>
-                <input class="form-control" id="np_icdsearch" oninput="renderIcdResults('np')" placeholder="Type to search…">
+                <input class="form-control" id="np_icdsearch" oninput="renderIcdResults('np')" placeholder="Type to search (full ICD-10 index)…">
                 <div id="np_icdresults" class="icd-search-results hidden"></div>
             </div>
             <div class="diagnosis-input-group">
@@ -288,15 +314,63 @@
         </div>
 
         <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Surgical Intervention</h3>
+            <div class="rte-toolbar">
+                <button type="button" onclick="rteCmd('np','bold')"><strong>B</strong></button>
+                <button type="button" onclick="rteCmd('np','italic')"><em>I</em></button>
+                <select onchange="rteFontSize('np', this.value)">
+                    <option value="">Font size</option>
+                    <option value="2">Small</option>
+                    <option value="3">Normal</option>
+                    <option value="5">Large</option>
+                    <option value="7">Extra large</option>
+                </select>
+            </div>
+            <div id="np_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Investigations</h3>
+            <div class="form-group"><label>Haematological / Biochemical</label><textarea class="form-control" id="np_inv_haem" placeholder="e.g. FBC, U&E, CRP results…"></textarea></div>
+            <div class="form-group"><label>Imaging</label><textarea class="form-control" id="np_inv_imaging" placeholder="e.g. USS KUB, X-ray, CT findings…"></textarea></div>
+            <div class="form-group"><label>Pathological</label><textarea class="form-control" id="np_inv_path" placeholder="e.g. histopathology report…"></textarea></div>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Medications</h3>
+            <div class="med-row" style="font-weight:600; font-size:13px; color:#666;">
+                <span>Drug</span><span>Dose</span><span>Frequency</span><span>Duration</span><span>Route</span><span></span>
+            </div>
+            <div id="np_medRows"></div>
+            <button class="btn btn-secondary" style="margin-top:6px;" onclick="addMedRow('np')">➕ Add Medication</button>
+            <datalist id="genericDrugList"></datalist>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Follow-up</h3>
+            <div class="grid-2">
+                <div class="form-group"><label>Follow-up Date</label><input type="date" class="form-control" id="np_followupdate"></div>
+                <div class="form-group"><label>Follow-up Instructions</label><input class="form-control" id="np_followupinstr"></div>
+            </div>
+        </div>
+
+        <div class="diagnosis-box">
             <h3 style="margin-bottom:10px;">📷 Capture Documents (optional)</h3>
-            <p style="color:#666; font-size:13px; margin-bottom:10px;">Photos upload straight to Google Drive — nothing is stored on this device.</p>
+            <p style="color:#666; font-size:13px; margin-bottom:10px;">Photos and PDFs upload straight to Google Drive — nothing stays on this device.</p>
             <select class="form-control" id="np_doctype" style="margin-bottom:10px;">
                 <option value="">Select document type…</option>
-                <option>Progress Report</option><option>Surgical Intervention</option><option>Imaging Report</option>
+                <option>Demographic Details</option><option>Progress Report</option><option>Surgical Intervention</option><option>Imaging Report</option>
                 <option>Discharge Summary</option><option>Consultation Note</option><option>Laboratory Results</option>
                 <option>Patient Image</option><option>Other</option>
             </select>
-            <input type="file" accept="image/*" capture="environment" onchange="capturePhoto(event,'np')">
+            <div class="btn-group" style="margin-bottom:10px;">
+                <label class="btn btn-info" style="cursor:pointer;">📷 Take Photo
+                    <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="capturePhoto(event,'np')">
+                </label>
+                <label class="btn btn-purple" style="cursor:pointer;">📁 Choose from Gallery / Files
+                    <input type="file" accept="image/*,application/pdf" multiple style="display:none;" onchange="capturePhoto(event,'np')">
+                </label>
+            </div>
             <div id="np_photoRow" class="photo-capture-row"></div>
         </div>
 
@@ -320,27 +394,30 @@
                     <option value="contact">Contact Number</option>
                     <option value="diagnosis">Diagnosis (text)</option>
                     <option value="icd">ICD-10 Code</option>
+                    <option value="hospital">Hospital / Location</option>
                 </select>
             </div>
             <div class="form-group"><label>Query</label><input class="form-control" id="searchQuery" onkeydown="if(event.key==='Enter') runSearch()"></div>
         </div>
         <div class="btn-group" style="margin-bottom:20px;">
             <button class="btn btn-primary" onclick="runSearch()">🔍 Search</button>
+            <button class="btn btn-orange" onclick="exportSearchResultsToExcel()">📊 Export Results to Excel</button>
             <button class="btn btn-secondary" onclick="closeModal('searchModal')">Close</button>
         </div>
+        <p id="exportStatus" style="color:#666; font-size:13px;"></p>
         <div id="searchResults"></div>
     </div>
 </div>
 
-<!-- ============ NEW ENCOUNTER MODAL ============ -->
+<!-- ============ NEW / EDIT ENCOUNTER MODAL ============ -->
 <div id="newEncounterModal" class="modal">
     <div class="modal-content">
-        <h2 style="margin-bottom:20px;">New Encounter</h2>
+        <h2 id="ne_modalTitle" style="margin-bottom:20px;">New Encounter</h2>
         <p id="ne_patientLabel" style="color:#666; margin-bottom:20px;"></p>
 
         <div class="grid-2">
             <div class="form-group">
-                <label>Location</label>
+                <label>Location / Hospital</label>
                 <select class="form-control" id="ne_location"><option>SBSCH</option><option>Asiri Hospital</option><option>Suwa Sewana Hospital</option></select>
             </div>
             <div class="form-group">
@@ -353,15 +430,17 @@
                 <label>Admission Type</label>
                 <select class="form-control" id="ne_admtype"><option value="">Select</option><option>Requested</option><option>Urgent</option><option>Acute</option><option>Neonatal</option></select>
             </div>
-            <div class="form-group"><label>Date of Visit/Admission</label><input type="date" class="form-control" id="ne_visitdate"></div>
+            <div class="form-group"><label>Date of Admission/Visit</label><input type="date" class="form-control" id="ne_visitdate"></div>
+            <div class="form-group"><label>Date of Discharge</label><input type="date" class="form-control" id="ne_dischargedate"></div>
             <div class="form-group"><label>Weight (kg)</label><input type="number" step="0.01" class="form-control" id="ne_weight"></div>
         </div>
+        <div class="form-group"><label>Reason for Admission/Visit</label><input class="form-control" id="ne_reason" placeholder="e.g. Admitted for inguinal hernia repair"></div>
 
         <div class="diagnosis-box">
             <h3 style="margin-bottom:10px;">Diagnoses (up to 10)</h3>
             <div class="form-group">
                 <label>Search ICD-10 Code</label>
-                <input class="form-control" id="ne_icdsearch" oninput="renderIcdResults('ne')" placeholder="Type to search…">
+                <input class="form-control" id="ne_icdsearch" oninput="renderIcdResults('ne')" placeholder="Type to search (full ICD-10 index)…">
                 <div id="ne_icdresults" class="icd-search-results hidden"></div>
             </div>
             <div class="diagnosis-input-group">
@@ -376,14 +455,61 @@
         </div>
 
         <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Surgical Intervention</h3>
+            <div class="rte-toolbar">
+                <button type="button" onclick="rteCmd('ne','bold')"><strong>B</strong></button>
+                <button type="button" onclick="rteCmd('ne','italic')"><em>I</em></button>
+                <select onchange="rteFontSize('ne', this.value)">
+                    <option value="">Font size</option>
+                    <option value="2">Small</option>
+                    <option value="3">Normal</option>
+                    <option value="5">Large</option>
+                    <option value="7">Extra large</option>
+                </select>
+            </div>
+            <div id="ne_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Investigations</h3>
+            <div class="form-group"><label>Haematological / Biochemical</label><textarea class="form-control" id="ne_inv_haem"></textarea></div>
+            <div class="form-group"><label>Imaging</label><textarea class="form-control" id="ne_inv_imaging"></textarea></div>
+            <div class="form-group"><label>Pathological</label><textarea class="form-control" id="ne_inv_path"></textarea></div>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Medications</h3>
+            <div class="med-row" style="font-weight:600; font-size:13px; color:#666;">
+                <span>Drug</span><span>Dose</span><span>Frequency</span><span>Duration</span><span>Route</span><span></span>
+            </div>
+            <div id="ne_medRows"></div>
+            <button class="btn btn-secondary" style="margin-top:6px;" onclick="addMedRow('ne')">➕ Add Medication</button>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Follow-up</h3>
+            <div class="grid-2">
+                <div class="form-group"><label>Follow-up Date</label><input type="date" class="form-control" id="ne_followupdate"></div>
+                <div class="form-group"><label>Follow-up Instructions</label><input class="form-control" id="ne_followupinstr"></div>
+            </div>
+        </div>
+
+        <div class="diagnosis-box">
             <h3 style="margin-bottom:10px;">📷 Capture Documents</h3>
             <select class="form-control" id="ne_doctype" style="margin-bottom:10px;">
                 <option value="">Select document type…</option>
-                <option>Progress Report</option><option>Surgical Intervention</option><option>Imaging Report</option>
+                <option>Demographic Details</option><option>Progress Report</option><option>Surgical Intervention</option><option>Imaging Report</option>
                 <option>Discharge Summary</option><option>Consultation Note</option><option>Laboratory Results</option>
                 <option>Patient Image</option><option>Other</option>
             </select>
-            <input type="file" accept="image/*" capture="environment" onchange="capturePhoto(event,'ne')">
+            <div class="btn-group" style="margin-bottom:10px;">
+                <label class="btn btn-info" style="cursor:pointer;">📷 Take Photo
+                    <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="capturePhoto(event,'ne')">
+                </label>
+                <label class="btn btn-purple" style="cursor:pointer;">📁 Choose from Gallery / Files
+                    <input type="file" accept="image/*,application/pdf" multiple style="display:none;" onchange="capturePhoto(event,'ne')">
+                </label>
+            </div>
             <div id="ne_photoRow" class="photo-capture-row"></div>
         </div>
 
@@ -486,6 +612,29 @@ let newEncounterPhotos = [];
 let currentPatient = null;    // patient row currently open in detail view
 let tokenClient = null;
 
+let newPatientMeds = [];      // { drug_name, dose, frequency, duration, route }
+let newEncounterMeds = [];
+let editingEncounterId = null; // set when the encounter modal is being used to EDIT an existing encounter
+let icd10Full = null;          // lazy-loaded full ICD-10 dataset: [[code, description], ...]
+let icd10FullLoading = null;   // promise while loading
+let lastSearchResults = [];    // patients from the most recent search (for Excel export)
+let currentPatientEncounters = [];
+let currentPatientDiagnoses = [];
+let currentPatientMedications = [];
+
+// Common generic drug names for the medication datalist (names only — no dosing data,
+// since paediatric dosing/formulary data is licensed BNF-C content and cannot be embedded here).
+const GENERIC_DRUGS = [
+    'Paracetamol','Ibuprofen','Diclofenac','Co-amoxiclav','Amoxicillin','Ampicillin','Cefuroxime','Ceftriaxone',
+    'Metronidazole','Gentamicin','Vancomycin','Meropenem','Piperacillin-Tazobactam','Flucloxacillin',
+    'Omeprazole','Ranitidine','Ondansetron','Metoclopramide','Domperidone','Morphine','Fentanyl','Tramadol',
+    'Midazolam','Ketamine','Atropine','Adrenaline (Epinephrine)','Salbutamol','Hydrocortisone','Dexamethasone',
+    'Prednisolone','Furosemide','Spironolactone','Vitamin K (Phytomenadione)','Iron (Ferrous Sulfate)',
+    'Folic Acid','Multivitamins','Lactulose','Senna','Oral Rehydration Solution','Normal Saline',
+    'Dextrose 5%','Dextrose 10%','Sodium Bicarbonate','Potassium Chloride','Calcium Gluconate',
+    'Fluconazole','Nystatin','Aciclovir','Chloramphenicol (Eye/Ear)','Mupirocin','Silver Sulfadiazine'
+];
+
 /* =========================================================================
    GOOGLE SIGN-IN + DRIVE AUTHORIZATION
    ========================================================================= */
@@ -509,7 +658,23 @@ window.onload = function () {
     document.getElementById('googleSignInBtn').onclick = function () {
         tokenClient.requestAccessToken();
     };
+
+    const dl = document.getElementById('genericDrugList');
+    if (dl) dl.innerHTML = GENERIC_DRUGS.map(d => `<option value="${d}">`).join('');
 };
+
+/* =========================================================================
+   FULL ICD-10 DATASET — lazy-loaded once, on first ICD search
+   ========================================================================= */
+function loadFullIcdDataset() {
+    if (icd10Full) return Promise.resolve(icd10Full);
+    if (icd10FullLoading) return icd10FullLoading;
+    icd10FullLoading = fetch(ICD10_FULL_PATH)
+        .then(r => r.json())
+        .then(data => { icd10Full = data; return data; })
+        .catch(err => { console.error('Could not load full ICD-10 dataset:', err); icd10Full = []; return icd10Full; });
+    return icd10FullLoading;
+}
 
 async function loadUserInfo() {
     const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -570,20 +735,44 @@ function renderIcdResults(prefix) {
     const resultsEl = document.getElementById(prefix + '_icdresults');
     if (!query) { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; return; }
 
-    const matches = ICD10_CODES.filter(item =>
-        item.code.toLowerCase().includes(query) || item.description.toLowerCase().includes(query)
-    ).slice(0, 15);
-
-    if (matches.length === 0) {
-        resultsEl.innerHTML = '<div class="icd-item" style="color:#999;">No matches — you can add it as free text instead</div>';
-    } else {
-        resultsEl.innerHTML = matches.map(m =>
-            `<div class="icd-item" onclick="selectIcd('${prefix}','${m.code}', ${JSON.stringify(m.description).replace(/"/g, '&quot;')})">
-                <strong>${m.code}</strong> — ${m.description}
-             </div>`
-        ).join('');
-    }
+    resultsEl.innerHTML = '<div class="icd-item" style="color:#999;">Searching…</div>';
     resultsEl.classList.remove('hidden');
+
+    loadFullIcdDataset().then(fullData => {
+        // Re-check the box still has the same query (user may have kept typing)
+        const currentQuery = document.getElementById(prefix + '_icdsearch').value.trim().toLowerCase();
+        if (currentQuery !== query) return;
+
+        const seen = new Set();
+        const matches = [];
+
+        // Curated paediatric-surgery list first (fastest, most relevant for this practice)
+        for (const item of ICD10_CODES) {
+            if (matches.length >= 20) break;
+            if (item.code.toLowerCase().includes(query) || item.description.toLowerCase().includes(query)) {
+                matches.push(item); seen.add(item.code);
+            }
+        }
+        // Then the full ICD-10 index
+        for (const [code, description] of fullData) {
+            if (matches.length >= 20) break;
+            if (seen.has(code)) continue;
+            if (code.toLowerCase().includes(query) || description.toLowerCase().includes(query)) {
+                matches.push({ code, description }); seen.add(code);
+            }
+        }
+
+        if (matches.length === 0) {
+            resultsEl.innerHTML = '<div class="icd-item" style="color:#999;">No matches — you can add it as free text instead</div>';
+        } else {
+            resultsEl.innerHTML = matches.map(m =>
+                `<div class="icd-item" onclick="selectIcd('${prefix}','${m.code}', ${JSON.stringify(m.description).replace(/"/g, '&quot;')})">
+                    <strong>${m.code}</strong> — ${m.description}
+                 </div>`
+            ).join('');
+        }
+        resultsEl.classList.remove('hidden');
+    });
 }
 
 function selectIcd(prefix, code, description) {
@@ -623,6 +812,51 @@ function renderDiagnosisList(prefix) {
         </div>
     `).join('') || '<p style="color:#999;">No diagnoses added yet</p>';
     document.getElementById(prefix + '_diagCount').textContent = list.length;
+}
+
+/* =========================================================================
+   RICH TEXT (surgical intervention editor) — bold, italic, font size
+   ========================================================================= */
+function rteCmd(prefix, cmd) {
+    document.getElementById(prefix + '_surgical').focus();
+    document.execCommand(cmd, false, null);
+}
+function rteFontSize(prefix, size) {
+    if (!size) return;
+    document.getElementById(prefix + '_surgical').focus();
+    document.execCommand('fontSize', false, size);
+}
+
+/* =========================================================================
+   MEDICATIONS — add/remove rows for the current form (prefix: 'np' or 'ne')
+   ========================================================================= */
+function addMedRow(prefix) {
+    const list = prefix === 'np' ? newPatientMeds : newEncounterMeds;
+    list.push({ drug_name: '', dose: '', frequency: '', duration: '', route: '' });
+    renderMedRows(prefix);
+}
+function removeMedRow(prefix, index) {
+    const list = prefix === 'np' ? newPatientMeds : newEncounterMeds;
+    list.splice(index, 1);
+    renderMedRows(prefix);
+}
+function updateMedField(prefix, index, field, value) {
+    const list = prefix === 'np' ? newPatientMeds : newEncounterMeds;
+    list[index][field] = value;
+}
+function renderMedRows(prefix) {
+    const list = prefix === 'np' ? newPatientMeds : newEncounterMeds;
+    const el = document.getElementById(prefix + '_medRows');
+    el.innerHTML = list.map((m, i) => `
+        <div class="med-row">
+            <input list="genericDrugList" placeholder="Drug name" value="${m.drug_name || ''}" onchange="updateMedField('${prefix}',${i},'drug_name',this.value)">
+            <input placeholder="Dose" value="${m.dose || ''}" onchange="updateMedField('${prefix}',${i},'dose',this.value)">
+            <input placeholder="Frequency" value="${m.frequency || ''}" onchange="updateMedField('${prefix}',${i},'frequency',this.value)">
+            <input placeholder="Duration" value="${m.duration || ''}" onchange="updateMedField('${prefix}',${i},'duration',this.value)">
+            <input placeholder="Route" value="${m.route || ''}" onchange="updateMedField('${prefix}',${i},'route',this.value)">
+            <button class="btn btn-danger" style="padding:6px 10px;" onclick="removeMedRow('${prefix}',${i})">✕</button>
+        </div>
+    `).join('') || '<p style="color:#999; font-size:13px;">No medications added</p>';
 }
 
 /* =========================================================================
@@ -677,34 +911,38 @@ async function uploadFileToDrive(file, fileName) {
 }
 
 async function capturePhoto(event, prefix) {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
     const docType = document.getElementById(prefix + '_doctype').value;
     if (!docType) { alert('Please select a document type first.'); event.target.value = ''; return; }
 
     const rowEl = document.getElementById(prefix + '_photoRow');
-    const statusId = 'upload_' + Date.now();
-    rowEl.insertAdjacentHTML('beforeend', `<span id="${statusId}" class="upload-status">⏳ Uploading ${docType}…</span>`);
+    const patientCodeForName = prefix === 'np'
+        ? document.getElementById('newPatientCode').textContent
+        : (currentPatient ? currentPatient.patient_code : 'patient');
 
-    try {
-        const patientCodeForName = prefix === 'np'
-            ? document.getElementById('newPatientCode').textContent
-            : (currentPatient ? currentPatient.patient_code : 'patient');
-        const fileName = `${patientCodeForName}_${docType.replace(/\s+/g,'_')}_${Date.now()}.jpg`;
+    for (const file of files) {
+        const statusId = 'upload_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+        rowEl.insertAdjacentHTML('beforeend', `<span id="${statusId}" class="upload-status">⏳ Uploading ${docType} (${file.name})…</span>`);
 
-        const uploaded = await uploadFileToDrive(file, fileName);
+        try {
+            const ext = (file.type === 'application/pdf') ? 'pdf' : (file.name.split('.').pop() || 'jpg');
+            const fileName = `${patientCodeForName}_${docType.replace(/\s+/g,'_')}_${Date.now()}.${ext}`;
 
-        const photoList = prefix === 'np' ? newPatientPhotos : newEncounterPhotos;
-        photoList.push({ docType, driveFileId: uploaded.id, driveViewLink: uploaded.viewLink, name: fileName });
+            const uploaded = await uploadFileToDrive(file, fileName);
 
-        document.getElementById(statusId).outerHTML = `<span class="upload-status">✅ ${docType} uploaded</span>`;
-    } catch (err) {
-        if (err.message === 'AUTH_EXPIRED') {
-            document.getElementById(statusId).outerHTML = `<span class="upload-status" style="color:#c62828;">Session expired — signing you in again, please retake the photo</span>`;
-            refreshTokenAndRetry(async () => {});
-        } else {
-            document.getElementById(statusId).outerHTML = `<span class="upload-status" style="color:#c62828;">❌ Upload failed — try again</span>`;
-            console.error(err);
+            const photoList = prefix === 'np' ? newPatientPhotos : newEncounterPhotos;
+            photoList.push({ docType, driveFileId: uploaded.id, driveViewLink: uploaded.viewLink, name: fileName });
+
+            document.getElementById(statusId).outerHTML = `<span class="upload-status">✅ ${docType} uploaded (${file.name})</span>`;
+        } catch (err) {
+            if (err.message === 'AUTH_EXPIRED') {
+                document.getElementById(statusId).outerHTML = `<span class="upload-status" style="color:#c62828;">Session expired — signing you in again, please retry</span>`;
+                refreshTokenAndRetry(async () => {});
+            } else {
+                document.getElementById(statusId).outerHTML = `<span class="upload-status" style="color:#c62828;">❌ Upload failed (${file.name}) — try again</span>`;
+                console.error(err);
+            }
         }
     }
     event.target.value = '';
@@ -728,14 +966,17 @@ function generatePatientCode() {
 function openNewPatientModal() {
     newPatientDiagnoses = [];
     newPatientPhotos = [];
+    newPatientMeds = [];
     document.getElementById('newPatientCode').textContent = generatePatientCode();
-    ['np_name','np_dob','np_contact','np_address','np_birthweight','np_gestation','np_visitnum','np_ward','np_visitdate','np_weight','np_icdsearch','np_freetext']
-        .forEach(id => document.getElementById(id).value = '');
+    ['np_name','np_dob','np_contact','np_address','np_birthweight','np_gestation','np_visitnum','np_ward','np_visitdate','np_dischargedate','np_weight','np_reason','np_icdsearch','np_freetext','np_inv_haem','np_inv_imaging','np_inv_path','np_followupdate','np_followupinstr']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('np_sex').value = '';
     document.getElementById('np_admtype').value = '';
     document.getElementById('np_doctype').value = '';
     document.getElementById('np_photoRow').innerHTML = '';
+    document.getElementById('np_surgical').innerHTML = '';
     renderDiagnosisList('np');
+    renderMedRows('np');
     openModal('newPatientModal');
 }
 
@@ -770,7 +1011,15 @@ async function saveNewPatient() {
             ward: document.getElementById('np_ward').value || null,
             admission_type: document.getElementById('np_admtype').value || null,
             date_of_visit: document.getElementById('np_visitdate').value || null,
+            date_of_discharge: document.getElementById('np_dischargedate').value || null,
             weight_kg: parseFloat(document.getElementById('np_weight').value) || null,
+            reason_for_admission: document.getElementById('np_reason').value || null,
+            surgical_intervention_html: document.getElementById('np_surgical').innerHTML || null,
+            investigations_haematology: document.getElementById('np_inv_haem').value || null,
+            investigations_imaging: document.getElementById('np_inv_imaging').value || null,
+            investigations_pathology: document.getElementById('np_inv_path').value || null,
+            follow_up_date: document.getElementById('np_followupdate').value || null,
+            follow_up_instructions: document.getElementById('np_followupinstr').value || null,
             created_by: currentUser.email
         }).select().single();
 
@@ -783,6 +1032,17 @@ async function saveNewPatient() {
             }));
             const { error: diagErr } = await supabaseClient.from('diagnoses').insert(diagRows);
             if (diagErr) throw diagErr;
+        }
+
+        const validMeds = newPatientMeds.filter(m => m.drug_name && m.drug_name.trim());
+        if (validMeds.length > 0) {
+            const medRows = validMeds.map(m => ({
+                encounter_id: encounterId, patient_id: patientId,
+                drug_name: m.drug_name, dose: m.dose || null, frequency: m.frequency || null,
+                duration: m.duration || null, route: m.route || null
+            }));
+            const { error: medErr } = await supabaseClient.from('medications').insert(medRows);
+            if (medErr) throw medErr;
         }
 
         if (newPatientPhotos.length > 0) {
@@ -881,8 +1141,18 @@ async function runSearch() {
                 if (error) throw error;
                 patients = data;
             }
+        } else if (mode === 'hospital') {
+            const { data: encMatches, error: encErr } = await supabaseClient.from('encounters').select('patient_id').ilike('location', `%${query}%`);
+            if (encErr) throw encErr;
+            const patientIds = [...new Set(encMatches.map(e => e.patient_id))];
+            if (patientIds.length > 0) {
+                const { data, error } = await supabaseClient.from('patients').select('*').in('id', patientIds);
+                if (error) throw error;
+                patients = data;
+            }
         }
 
+        lastSearchResults = patients || [];
         renderPatientList(resultsEl, patients);
     } catch (err) {
         resultsEl.innerHTML = '<p style="color:#c62828;">Search error.</p>';
@@ -912,7 +1182,15 @@ async function openPatientDetail(patientId) {
             .from('documents').select('*').eq('patient_id', patientId).order('created_at', { ascending: false });
         if (docErr) throw docErr;
 
-        renderPatientDetail(patient, encounters, diagnoses, documents);
+        const { data: medications, error: medErr } = await supabaseClient
+            .from('medications').select('*').eq('patient_id', patientId);
+        if (medErr) throw medErr;
+
+        currentPatientEncounters = encounters || [];
+        currentPatientDiagnoses = diagnoses || [];
+        currentPatientMedications = medications || [];
+
+        renderPatientDetail(patient, encounters, diagnoses, documents, medications);
 
         document.getElementById('homeView').classList.add('hidden');
         document.getElementById('patientDetailView').classList.remove('hidden');
@@ -935,7 +1213,7 @@ function calculateAge(dob) {
     return `${Math.floor(days / 365)} years`;
 }
 
-function renderPatientDetail(patient, encounters, diagnoses, documents) {
+function renderPatientDetail(patient, encounters, diagnoses, documents, medications) {
     document.getElementById('detailPatientName').textContent = patient.full_name;
     document.getElementById('detailPatientId').textContent = `Patient ID: ${patient.patient_code}`;
 
@@ -954,20 +1232,35 @@ function renderPatientDetail(patient, encounters, diagnoses, documents) {
         encEl.innerHTML = '<p style="color:#999;">No encounters yet.</p>';
     } else {
         encEl.innerHTML = encounters.map(enc => {
-            const encDiagnoses = diagnoses.filter(d => d.encounter_id === enc.id);
+            const encDiagnoses = (diagnoses || []).filter(d => d.encounter_id === enc.id);
+            const encMeds = (medications || []).filter(m => m.encounter_id === enc.id);
             return `
-                <div class="doc-item" style="border-left:4px solid #1976d2;">
+                <div class="doc-item" style="border-left:4px solid #1976d2; flex-direction:column; align-items:stretch;">
                     <div style="width:100%;">
                         <div class="flex-between" style="margin-bottom:8px;">
                             <strong>${enc.patient_type} — ${enc.location}</strong>
-                            <span class="badge badge-blue">${enc.date_of_visit || 'No date'}</span>
+                            <span class="badge badge-blue">${enc.date_of_visit || 'No date'}${enc.date_of_discharge ? ' → ' + enc.date_of_discharge : ''}</span>
                         </div>
+                        ${enc.reason_for_admission ? `<p style="font-size:14px; margin-bottom:6px;"><strong>Reason:</strong> ${enc.reason_for_admission}</p>` : ''}
                         <p style="font-size:14px; color:#555;">
                             ${enc.ward ? 'Ward: ' + enc.ward + ' · ' : ''}
                             ${enc.admission_type ? enc.admission_type + ' · ' : ''}
                             ${enc.weight_kg ? enc.weight_kg + ' kg' : ''}
                         </p>
                         ${encDiagnoses.length > 0 ? '<p style="margin-top:8px;">' + encDiagnoses.map(d => `<span class="badge badge-green" style="margin-right:6px;">${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}</span>`).join('') + '</p>' : ''}
+                        ${enc.surgical_intervention_html ? `<div style="margin-top:8px; font-size:14px;"><strong>Surgical Intervention:</strong><div style="background:#f9f9f9; padding:8px; border-radius:6px; margin-top:4px;">${enc.surgical_intervention_html}</div></div>` : ''}
+                        ${(enc.investigations_haematology || enc.investigations_imaging || enc.investigations_pathology) ? `
+                            <div style="margin-top:8px; font-size:14px;"><strong>Investigations:</strong>
+                                ${enc.investigations_haematology ? `<p style="margin-top:2px;">Haem/Biochem: ${enc.investigations_haematology}</p>` : ''}
+                                ${enc.investigations_imaging ? `<p style="margin-top:2px;">Imaging: ${enc.investigations_imaging}</p>` : ''}
+                                ${enc.investigations_pathology ? `<p style="margin-top:2px;">Pathology: ${enc.investigations_pathology}</p>` : ''}
+                            </div>` : ''}
+                        ${encMeds.length > 0 ? `<div style="margin-top:8px; font-size:14px;"><strong>Medications:</strong> ${encMeds.map(m => `${m.drug_name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ' ' + m.frequency : ''}${m.route ? ' (' + m.route + ')' : ''}`).join(', ')}</div>` : ''}
+                        ${enc.follow_up_date ? `<p style="margin-top:8px; font-size:14px;"><strong>Follow-up:</strong> ${enc.follow_up_date}${enc.follow_up_instructions ? ' — ' + enc.follow_up_instructions : ''}</p>` : ''}
+                    </div>
+                    <div class="encounter-actions">
+                        <button class="btn btn-secondary" onclick="openEditEncounterModal('${enc.id}')">✏️ Edit</button>
+                        <button class="btn btn-info" onclick="generateDischargeSummaryPDF('${enc.id}')">📄 Discharge Summary PDF</button>
                     </div>
                 </div>
             `;
@@ -988,26 +1281,82 @@ function renderPatientDetail(patient, encounters, diagnoses, documents) {
 }
 
 /* =========================================================================
-   NEW ENCOUNTER (for an existing patient)
+   NEW / EDIT ENCOUNTER (for an existing patient)
    ========================================================================= */
-function openNewEncounterModal() {
-    if (!currentPatient) return;
+function resetEncounterForm() {
     newEncounterDiagnoses = [];
     newEncounterPhotos = [];
-    document.getElementById('ne_patientLabel').textContent = `${currentPatient.full_name} — ${currentPatient.patient_code}`;
-    ['ne_visitnum','ne_ward','ne_visitdate','ne_weight','ne_icdsearch','ne_freetext'].forEach(id => document.getElementById(id).value = '');
+    newEncounterMeds = [];
+    ['ne_visitnum','ne_ward','ne_visitdate','ne_dischargedate','ne_weight','ne_reason','ne_icdsearch','ne_freetext','ne_inv_haem','ne_inv_imaging','ne_inv_path','ne_followupdate','ne_followupinstr']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('ne_admtype').value = '';
     document.getElementById('ne_doctype').value = '';
     document.getElementById('ne_photoRow').innerHTML = '';
+    document.getElementById('ne_surgical').innerHTML = '';
     renderDiagnosisList('ne');
+    renderMedRows('ne');
+}
+
+function openNewEncounterModal() {
+    if (!currentPatient) return;
+    editingEncounterId = null;
+    resetEncounterForm();
+    document.getElementById('ne_modalTitle').textContent = 'New Encounter';
+    document.getElementById('ne_patientLabel').textContent = `${currentPatient.full_name} — ${currentPatient.patient_code}`;
     openModal('newEncounterModal');
+}
+
+async function openEditEncounterModal(encounterId) {
+    if (!currentPatient) return;
+    showLoading('Loading encounter…');
+    try {
+        const { data: enc, error: encErr } = await supabaseClient.from('encounters').select('*').eq('id', encounterId).single();
+        if (encErr) throw encErr;
+        const { data: diagnoses, error: dErr } = await supabaseClient.from('diagnoses').select('*').eq('encounter_id', encounterId);
+        if (dErr) throw dErr;
+        const { data: meds, error: mErr } = await supabaseClient.from('medications').select('*').eq('encounter_id', encounterId);
+        if (mErr) throw mErr;
+
+        editingEncounterId = encounterId;
+        resetEncounterForm();
+        document.getElementById('ne_modalTitle').textContent = 'Edit Encounter';
+        document.getElementById('ne_patientLabel').textContent = `${currentPatient.full_name} — ${currentPatient.patient_code}`;
+
+        document.getElementById('ne_location').value = enc.location || 'SBSCH';
+        document.getElementById('ne_patienttype').value = enc.patient_type || 'Outpatient';
+        document.getElementById('ne_visitnum').value = enc.visit_or_admission_number || '';
+        document.getElementById('ne_ward').value = enc.ward || '';
+        document.getElementById('ne_admtype').value = enc.admission_type || '';
+        document.getElementById('ne_visitdate').value = enc.date_of_visit || '';
+        document.getElementById('ne_dischargedate').value = enc.date_of_discharge || '';
+        document.getElementById('ne_weight').value = enc.weight_kg || '';
+        document.getElementById('ne_reason').value = enc.reason_for_admission || '';
+        document.getElementById('ne_surgical').innerHTML = enc.surgical_intervention_html || '';
+        document.getElementById('ne_inv_haem').value = enc.investigations_haematology || '';
+        document.getElementById('ne_inv_imaging').value = enc.investigations_imaging || '';
+        document.getElementById('ne_inv_path').value = enc.investigations_pathology || '';
+        document.getElementById('ne_followupdate').value = enc.follow_up_date || '';
+        document.getElementById('ne_followupinstr').value = enc.follow_up_instructions || '';
+
+        newEncounterDiagnoses = (diagnoses || []).map(d => ({ icd_code: d.icd_code, diagnosis_text: d.diagnosis_text }));
+        renderDiagnosisList('ne');
+        newEncounterMeds = (meds || []).map(m => ({ drug_name: m.drug_name, dose: m.dose, frequency: m.frequency, duration: m.duration, route: m.route }));
+        renderMedRows('ne');
+
+        hideLoading();
+        openModal('newEncounterModal');
+    } catch (err) {
+        hideLoading();
+        alert('Error loading encounter: ' + (err.message || JSON.stringify(err)));
+        console.error(err);
+    }
 }
 
 async function saveNewEncounter() {
     if (!currentPatient) return;
-    showLoading('Saving encounter…');
+    showLoading(editingEncounterId ? 'Updating encounter…' : 'Saving encounter…');
     try {
-        const { data: encounterRow, error: encErr } = await supabaseClient.from('encounters').insert({
+        const encounterData = {
             patient_id: currentPatient.id,
             location: document.getElementById('ne_location').value,
             patient_type: document.getElementById('ne_patienttype').value,
@@ -1015,12 +1364,31 @@ async function saveNewEncounter() {
             ward: document.getElementById('ne_ward').value || null,
             admission_type: document.getElementById('ne_admtype').value || null,
             date_of_visit: document.getElementById('ne_visitdate').value || null,
+            date_of_discharge: document.getElementById('ne_dischargedate').value || null,
             weight_kg: parseFloat(document.getElementById('ne_weight').value) || null,
+            reason_for_admission: document.getElementById('ne_reason').value || null,
+            surgical_intervention_html: document.getElementById('ne_surgical').innerHTML || null,
+            investigations_haematology: document.getElementById('ne_inv_haem').value || null,
+            investigations_imaging: document.getElementById('ne_inv_imaging').value || null,
+            investigations_pathology: document.getElementById('ne_inv_path').value || null,
+            follow_up_date: document.getElementById('ne_followupdate').value || null,
+            follow_up_instructions: document.getElementById('ne_followupinstr').value || null,
             created_by: currentUser.email
-        }).select().single();
+        };
 
-        if (encErr) throw encErr;
-        const encounterId = encounterRow.id;
+        let encounterId;
+        if (editingEncounterId) {
+            encounterId = editingEncounterId;
+            const { error: updErr } = await supabaseClient.from('encounters').update(encounterData).eq('id', encounterId);
+            if (updErr) throw updErr;
+            // Simplest safe approach for edits: replace diagnoses & medications with current lists
+            await supabaseClient.from('diagnoses').delete().eq('encounter_id', encounterId);
+            await supabaseClient.from('medications').delete().eq('encounter_id', encounterId);
+        } else {
+            const { data: encounterRow, error: encErr } = await supabaseClient.from('encounters').insert(encounterData).select().single();
+            if (encErr) throw encErr;
+            encounterId = encounterRow.id;
+        }
 
         if (newEncounterDiagnoses.length > 0) {
             const diagRows = newEncounterDiagnoses.map(d => ({
@@ -1028,6 +1396,17 @@ async function saveNewEncounter() {
             }));
             const { error: diagErr } = await supabaseClient.from('diagnoses').insert(diagRows);
             if (diagErr) throw diagErr;
+        }
+
+        const validMeds = newEncounterMeds.filter(m => m.drug_name && m.drug_name.trim());
+        if (validMeds.length > 0) {
+            const medRows = validMeds.map(m => ({
+                encounter_id: encounterId, patient_id: currentPatient.id,
+                drug_name: m.drug_name, dose: m.dose || null, frequency: m.frequency || null,
+                duration: m.duration || null, route: m.route || null
+            }));
+            const { error: medErr } = await supabaseClient.from('medications').insert(medRows);
+            if (medErr) throw medErr;
         }
 
         if (newEncounterPhotos.length > 0) {
@@ -1039,12 +1418,304 @@ async function saveNewEncounter() {
             if (docErr) throw docErr;
         }
 
+        editingEncounterId = null;
         hideLoading();
         closeModal('newEncounterModal');
         openPatientDetail(currentPatient.id);
     } catch (err) {
         hideLoading();
         alert('Error saving encounter: ' + (err.message || JSON.stringify(err)));
+        console.error(err);
+    }
+}
+
+/* =========================================================================
+   HELPERS FOR PDF GENERATION
+   ========================================================================= */
+function stripHtml(html) {
+    if (!html) return '';
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html.replace(/<div>/gi, '\n').replace(/<br\s*\/?>/gi, '\n');
+    return (tmp.textContent || tmp.innerText || '').trim();
+}
+
+function loadLogoDataUrl() {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width; canvas.height = img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            } catch (e) { resolve(null); }
+        };
+        img.onerror = function () { resolve(null); };
+        img.src = LOGO_PATH;
+    });
+}
+
+/* =========================================================================
+   DISCHARGE SUMMARY PDF
+   ========================================================================= */
+async function generateDischargeSummaryPDF(encounterId) {
+    if (!currentPatient) return;
+    showLoading('Generating discharge summary…');
+    try {
+        const enc = currentPatientEncounters.find(e => e.id === encounterId);
+        if (!enc) throw new Error('Encounter not found');
+        const encDiagnoses = currentPatientDiagnoses.filter(d => d.encounter_id === encounterId);
+        const encMeds = currentPatientMedications.filter(m => m.encounter_id === encounterId);
+        const p = currentPatient;
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 15;
+        let y = 15;
+
+        const logoDataUrl = await loadLogoDataUrl();
+        if (logoDataUrl) {
+            doc.addImage(logoDataUrl, 'PNG', margin, y, 22, 22);
+        }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+        doc.text(HOSPITAL_NAME, pageWidth / 2, y + 8, { align: 'center' });
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+        doc.text('Discharge Summary', pageWidth / 2, y + 16, { align: 'center' });
+        y += 30;
+
+        doc.setDrawColor(180); doc.line(margin, y, pageWidth - margin, y);
+        y += 8;
+
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.text('Patient Details', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+        const demoLines = [
+            `Name: ${p.full_name}     Patient ID: ${p.patient_code}`,
+            `Date of Birth: ${p.date_of_birth || 'N/A'}     Age: ${calculateAge(p.date_of_birth)}     Sex: ${p.sex || 'N/A'}`,
+            `Contact: ${p.contact_number || 'N/A'}     Location: ${enc.location || 'N/A'} (${enc.patient_type || ''})`
+        ];
+        demoLines.forEach(line => { doc.text(line, margin, y); y += 5.5; });
+        y += 3;
+
+        doc.setFont('helvetica', 'bold'); doc.text('Admission / Discharge', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Admitted: ${enc.date_of_visit || 'N/A'}     Discharged: ${enc.date_of_discharge || 'N/A'}     Ward: ${enc.ward || 'N/A'}`, margin, y);
+        y += 8;
+
+        if (enc.reason_for_admission) {
+            doc.setFont('helvetica', 'bold'); doc.text('Reason for Admission', margin, y); y += 6;
+            doc.setFont('helvetica', 'normal');
+            y = addWrappedText(doc, enc.reason_for_admission, margin, y, pageWidth - margin * 2);
+            y += 4;
+        }
+
+        if (encDiagnoses.length > 0) {
+            doc.setFont('helvetica', 'bold'); doc.text('Diagnoses', margin, y); y += 6;
+            doc.setFont('helvetica', 'normal');
+            encDiagnoses.forEach(d => {
+                y = addWrappedText(doc, `• ${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}`, margin, y, pageWidth - margin * 2);
+            });
+            y += 4;
+        }
+
+        if (enc.surgical_intervention_html) {
+            doc.setFont('helvetica', 'bold'); doc.text('Surgical Intervention', margin, y); y += 6;
+            doc.setFont('helvetica', 'normal');
+            y = addWrappedText(doc, stripHtml(enc.surgical_intervention_html), margin, y, pageWidth - margin * 2);
+            y += 4;
+        }
+
+        const invBlocks = [
+            ['Haematological / Biochemical Investigations', enc.investigations_haematology],
+            ['Imaging Investigations', enc.investigations_imaging],
+            ['Pathological Investigations', enc.investigations_pathology]
+        ];
+        invBlocks.forEach(([label, val]) => {
+            if (!val) return;
+            if (y > 260) { doc.addPage(); y = 15; }
+            doc.setFont('helvetica', 'bold'); doc.text(label, margin, y); y += 6;
+            doc.setFont('helvetica', 'normal');
+            y = addWrappedText(doc, val, margin, y, pageWidth - margin * 2);
+            y += 4;
+        });
+
+        if (encMeds.length > 0) {
+            if (y > 250) { doc.addPage(); y = 15; }
+            doc.setFont('helvetica', 'bold'); doc.text('Medications', margin, y); y += 6;
+            doc.setFont('helvetica', 'normal');
+            encMeds.forEach(m => {
+                const line = `• ${m.drug_name}${m.dose ? '  ' + m.dose : ''}${m.frequency ? '  ' + m.frequency : ''}${m.duration ? '  for ' + m.duration : ''}${m.route ? '  (' + m.route + ')' : ''}`;
+                y = addWrappedText(doc, line, margin, y, pageWidth - margin * 2);
+            });
+            y += 4;
+        }
+
+        if (enc.follow_up_date || enc.follow_up_instructions) {
+            if (y > 260) { doc.addPage(); y = 15; }
+            doc.setFont('helvetica', 'bold'); doc.text('Follow-up', margin, y); y += 6;
+            doc.setFont('helvetica', 'normal');
+            y = addWrappedText(doc, `Date: ${enc.follow_up_date || 'N/A'}     Instructions: ${enc.follow_up_instructions || 'N/A'}`, margin, y, pageWidth - margin * 2);
+            y += 6;
+        }
+
+        if (y > 250) { doc.addPage(); y = 15; }
+        y += 10;
+        doc.setDrawColor(180); doc.line(margin, y, pageWidth - margin, y); y += 8;
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.text(`${PROVIDER_NAME} ${PROVIDER_CREDENTIALS}`, margin, y); y += 5.5;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+        doc.text(PROVIDER_SPECIALTY + ' (Principal Care Provider)', margin, y); y += 5.5;
+        doc.text(PROVIDER_LICENSE, margin, y);
+
+        doc.save(`${p.patient_code}_Discharge_Summary_${enc.date_of_discharge || 'draft'}.pdf`);
+        hideLoading();
+    } catch (err) {
+        hideLoading();
+        alert('Error generating discharge summary: ' + (err.message || JSON.stringify(err)));
+        console.error(err);
+    }
+}
+
+function addWrappedText(doc, text, x, y, maxWidth) {
+    const lines = doc.splitTextToSize(text || '', maxWidth);
+    lines.forEach(line => {
+        if (y > 275) { doc.addPage(); y = 15; }
+        doc.text(line, x, y);
+        y += 5.5;
+    });
+    return y;
+}
+
+/* =========================================================================
+   PATIENT ID CARD PDF
+   ========================================================================= */
+async function generateIdCardPDF() {
+    if (!currentPatient) return;
+    showLoading('Generating ID card…');
+    try {
+        const { jsPDF } = window.jspdf;
+        // Credit-card size, landscape
+        const doc = new jsPDF({ unit: 'mm', format: [85.6, 54] });
+        const logoDataUrl = await loadLogoDataUrl();
+        if (logoDataUrl) doc.addImage(logoDataUrl, 'PNG', 4, 4, 14, 14);
+
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+        doc.text('SBSCH - Kandy', 20, 8);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+        doc.text('Patient Identification Card', 20, 12);
+
+        doc.setDrawColor(200); doc.line(4, 20, 81.6, 20);
+
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+        doc.text(currentPatient.full_name, 6, 30);
+
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+        doc.text(`EHR No: ${currentPatient.patient_code}`, 6, 37);
+        doc.text(`DOB: ${currentPatient.date_of_birth || 'N/A'}     Sex: ${currentPatient.sex || 'N/A'}`, 6, 43);
+
+        doc.setFontSize(6); doc.setTextColor(120);
+        doc.text('Please bring this card to every visit.', 6, 50);
+
+        doc.save(`${currentPatient.patient_code}_ID_Card.pdf`);
+        hideLoading();
+    } catch (err) {
+        hideLoading();
+        alert('Error generating ID card: ' + (err.message || JSON.stringify(err)));
+        console.error(err);
+    }
+}
+
+/* =========================================================================
+   DELETE PATIENT (for duplicate records)
+   ========================================================================= */
+async function deleteCurrentPatient() {
+    if (!currentPatient) return;
+    const confirm1 = confirm(`Delete patient "${currentPatient.full_name}" (${currentPatient.patient_code})?\n\nThis permanently removes their demographics, encounters, diagnoses, medications, and document links. This cannot be undone.`);
+    if (!confirm1) return;
+    const confirm2 = prompt(`To confirm deletion, type the patient's ID exactly: ${currentPatient.patient_code}`);
+    if (confirm2 !== currentPatient.patient_code) { alert('Patient ID did not match — deletion cancelled.'); return; }
+
+    showLoading('Deleting patient…');
+    try {
+        const { error } = await supabaseClient.from('patients').delete().eq('id', currentPatient.id);
+        if (error) throw error;
+        hideLoading();
+        currentPatient = null;
+        backToHome();
+    } catch (err) {
+        hideLoading();
+        alert('Error deleting patient: ' + (err.message || JSON.stringify(err)));
+        console.error(err);
+    }
+}
+
+/* =========================================================================
+   EXCEL EXPORT (research data export from search results)
+   ========================================================================= */
+async function exportSearchResultsToExcel() {
+    const statusEl = document.getElementById('exportStatus');
+    if (!lastSearchResults || lastSearchResults.length === 0) {
+        statusEl.textContent = 'Run a search first, then export the results.';
+        return;
+    }
+
+    statusEl.textContent = `Building export for ${lastSearchResults.length} patient(s)…`;
+    showLoading('Building Excel export…');
+    try {
+        const rows = [];
+        for (const patient of lastSearchResults) {
+            const { data: encounters } = await supabaseClient.from('encounters').select('*').eq('patient_id', patient.id);
+            const { data: diagnoses } = await supabaseClient.from('diagnoses').select('*').eq('patient_id', patient.id);
+            const { data: medications } = await supabaseClient.from('medications').select('*').eq('patient_id', patient.id);
+
+            const encList = (encounters && encounters.length > 0) ? encounters : [null];
+            for (const enc of encList) {
+                const encId = enc ? enc.id : null;
+                const encDiagnoses = (diagnoses || []).filter(d => d.encounter_id === encId);
+                const encMeds = (medications || []).filter(m => m.encounter_id === encId);
+
+                rows.push({
+                    'Patient ID': patient.patient_code,
+                    'Full Name': patient.full_name,
+                    'Date of Birth': patient.date_of_birth || '',
+                    'Age': calculateAge(patient.date_of_birth),
+                    'Sex': patient.sex || '',
+                    'Contact': patient.contact_number || '',
+                    'Address': patient.address || '',
+                    'Birth Weight (kg)': patient.birth_weight_kg || '',
+                    'Gestation (weeks)': patient.gestation_weeks || '',
+                    'Hospital/Location': enc ? enc.location || '' : '',
+                    'Patient Type': enc ? enc.patient_type || '' : '',
+                    'Ward': enc ? enc.ward || '' : '',
+                    'Admission Type': enc ? enc.admission_type || '' : '',
+                    'Date of Admission/Visit': enc ? enc.date_of_visit || '' : '',
+                    'Date of Discharge': enc ? enc.date_of_discharge || '' : '',
+                    'Reason for Admission': enc ? enc.reason_for_admission || '' : '',
+                    'Diagnoses (ICD / Text)': encDiagnoses.map(d => `${d.icd_code ? d.icd_code + ' - ' : ''}${d.diagnosis_text}`).join(' | '),
+                    'Surgical Intervention': enc ? stripHtml(enc.surgical_intervention_html) : '',
+                    'Investigations - Haem/Biochem': enc ? enc.investigations_haematology || '' : '',
+                    'Investigations - Imaging': enc ? enc.investigations_imaging || '' : '',
+                    'Investigations - Pathology': enc ? enc.investigations_pathology || '' : '',
+                    'Medications': encMeds.map(m => `${m.drug_name}${m.dose ? ' ' + m.dose : ''}${m.frequency ? ' ' + m.frequency : ''}`).join(' | '),
+                    'Follow-up Date': enc ? enc.follow_up_date || '' : '',
+                    'Follow-up Instructions': enc ? enc.follow_up_instructions || '' : ''
+                });
+            }
+        }
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Export');
+        const stamp = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `SBSCH_Export_${stamp}.xlsx`);
+
+        statusEl.textContent = `Exported ${rows.length} row(s) from ${lastSearchResults.length} patient(s).`;
+        hideLoading();
+    } catch (err) {
+        hideLoading();
+        statusEl.textContent = 'Export failed — see console for details.';
         console.error(err);
     }
 }

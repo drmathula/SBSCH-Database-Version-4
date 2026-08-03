@@ -225,6 +225,7 @@
                     <h2 id="detailPatientName"></h2>
                     <div class="btn-group">
                         <button class="btn btn-success" onclick="openNewEncounterModal()">➕ New Encounter</button>
+                        <button class="btn btn-orange" onclick="openEditPatientModal()">✏️ Edit Patient Details</button>
                         <button class="btn btn-purple" onclick="generateIdCardPDF()">🪪 ID Card</button>
                         <button class="btn btn-danger" onclick="deleteCurrentPatient()">🗑️ Delete Patient</button>
                         <button class="btn btn-secondary" onclick="backToHome()">← Back</button>
@@ -384,6 +385,34 @@
         <div class="btn-group">
             <button class="btn btn-success" onclick="saveNewPatient()">💾 Save Patient</button>
             <button class="btn btn-secondary" onclick="closeModal('newPatientModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============ EDIT PATIENT DETAILS MODAL ============ -->
+<div id="editPatientModal" class="modal">
+    <div class="modal-content">
+        <h2 style="margin-bottom:20px;">Edit Patient Details</h2>
+        <div class="info-card" style="margin-bottom:20px;">
+            <p>Patient ID</p>
+            <p id="ep_patientCode"></p>
+        </div>
+        <div class="form-group"><label>Date of Registration</label><input type="date" class="form-control" id="ep_regdate"></div>
+        <div class="grid-2">
+            <div class="form-group"><label>Full Name</label><input class="form-control" id="ep_name"></div>
+            <div class="form-group"><label>Date of Birth</label><input type="date" class="form-control" id="ep_dob"></div>
+            <div class="form-group">
+                <label>Sex</label>
+                <select class="form-control" id="ep_sex"><option value="">Select</option><option>Male</option><option>Female</option></select>
+            </div>
+            <div class="form-group"><label>Contact Number</label><input class="form-control" id="ep_contact"></div>
+            <div class="form-group"><label>Address</label><input class="form-control" id="ep_address"></div>
+            <div class="form-group"><label>Birth Weight (kg)</label><input type="number" step="0.01" class="form-control" id="ep_birthweight"></div>
+            <div class="form-group"><label>Gestation (weeks)</label><input type="number" class="form-control" id="ep_gestation"></div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-success" onclick="saveEditPatient()">💾 Save Changes</button>
+            <button class="btn btn-secondary" onclick="closeModal('editPatientModal')">Cancel</button>
         </div>
     </div>
 </div>
@@ -1679,6 +1708,54 @@ async function generateIdCardPDF() {
 /* =========================================================================
    DELETE PATIENT (for duplicate records)
    ========================================================================= */
+/* =========================================================================
+   EDIT PATIENT DETAILS (demographics, including contact number, after
+   initial registration)
+   ========================================================================= */
+function openEditPatientModal() {
+    if (!currentPatient) return;
+    document.getElementById('ep_patientCode').textContent = currentPatient.patient_code;
+    document.getElementById('ep_regdate').value = currentPatient.registration_date || '';
+    document.getElementById('ep_name').value = currentPatient.full_name || '';
+    document.getElementById('ep_dob').value = currentPatient.date_of_birth || '';
+    document.getElementById('ep_sex').value = currentPatient.sex || '';
+    document.getElementById('ep_contact').value = currentPatient.contact_number || '';
+    document.getElementById('ep_address').value = currentPatient.address || '';
+    document.getElementById('ep_birthweight').value = currentPatient.birth_weight_kg || '';
+    document.getElementById('ep_gestation').value = currentPatient.gestation_weeks || '';
+    openModal('editPatientModal');
+}
+
+async function saveEditPatient() {
+    if (!currentPatient) return;
+    const name = document.getElementById('ep_name').value.trim();
+    if (!name) { alert('Please enter the patient name.'); return; }
+
+    showLoading('Updating patient details…');
+    try {
+        const { error } = await supabaseClient.from('patients').update({
+            full_name: name,
+            registration_date: document.getElementById('ep_regdate').value || null,
+            date_of_birth: document.getElementById('ep_dob').value || null,
+            sex: document.getElementById('ep_sex').value || null,
+            contact_number: document.getElementById('ep_contact').value || null,
+            address: document.getElementById('ep_address').value || null,
+            birth_weight_kg: parseFloat(document.getElementById('ep_birthweight').value) || null,
+            gestation_weeks: parseFloat(document.getElementById('ep_gestation').value) || null
+        }).eq('id', currentPatient.id);
+
+        if (error) throw error;
+
+        hideLoading();
+        closeModal('editPatientModal');
+        openPatientDetail(currentPatient.id);
+    } catch (err) {
+        hideLoading();
+        alert('Error updating patient: ' + (err.message || JSON.stringify(err)));
+        console.error(err);
+    }
+}
+
 async function deleteCurrentPatient() {
     if (!currentPatient) return;
     const confirm1 = confirm(`Delete patient "${currentPatient.full_name}" (${currentPatient.patient_code})?\n\nThis permanently removes their demographics, encounters, diagnoses, medications, and document links. This cannot be undone.`);

@@ -424,7 +424,7 @@
         <div class="grid-2">
             <div class="form-group">
                 <label>Search by</label>
-                <select class="form-control" id="searchMode">
+                <select class="form-control" id="searchMode" onchange="document.getElementById('searchQuery').value=''; hideSearchSuggestions();">
                     <option value="name">Name</option>
                     <option value="id">Patient ID</option>
                     <option value="contact">Contact Number</option>
@@ -433,10 +433,14 @@
                     <option value="hospital">Hospital / Location</option>
                 </select>
             </div>
-            <div class="form-group"><label>Query</label><input class="form-control" id="searchQuery" onkeydown="if(event.key==='Enter') runSearch()"></div>
+            <div class="form-group">
+                <label>Query</label>
+                <input class="form-control" id="searchQuery" oninput="renderSearchSuggestions()" onkeydown="if(event.key==='Enter') { hideSearchSuggestions(); runSearch(); }" autocomplete="off">
+                <div id="searchSuggestions" class="icd-search-results hidden"></div>
+            </div>
         </div>
         <div class="btn-group" style="margin-bottom:20px;">
-            <button class="btn btn-primary" onclick="runSearch()">🔍 Search</button>
+            <button class="btn btn-primary" onclick="hideSearchSuggestions(); runSearch();">🔍 Search</button>
             <button class="btn btn-orange" onclick="exportSearchResultsToExcel()">📊 Export Results to Excel</button>
             <button class="btn btn-purple" onclick="exportAllPatientsToExcel()">📊 Export ALL Patients to Excel</button>
             <button class="btn btn-secondary" onclick="closeModal('searchModal')">Close</button>
@@ -1150,7 +1154,75 @@ function backToHome() {
 function openSearchModal() {
     document.getElementById('searchQuery').value = '';
     document.getElementById('searchResults').innerHTML = '';
+    hideSearchSuggestions();
     openModal('searchModal');
+}
+
+/* =========================================================================
+   SEARCH SUGGESTIONS — dropdown of matching values already in the database,
+   so the person can pick an existing name/diagnosis/ICD code/hospital
+   instead of retyping it exactly
+   ========================================================================= */
+let searchSuggestTimer = null;
+
+function hideSearchSuggestions() {
+    const el = document.getElementById('searchSuggestions');
+    el.classList.add('hidden');
+    el.innerHTML = '';
+}
+
+function renderSearchSuggestions() {
+    const mode = document.getElementById('searchMode').value;
+    const query = document.getElementById('searchQuery').value.trim();
+    const el = document.getElementById('searchSuggestions');
+
+    if (!query || mode === 'id' || mode === 'contact') { hideSearchSuggestions(); return; }
+
+    clearTimeout(searchSuggestTimer);
+    searchSuggestTimer = setTimeout(async () => {
+        // Re-check the query hasn't changed while we were waiting/fetching
+        const currentQuery = document.getElementById('searchQuery').value.trim();
+        if (currentQuery !== query) return;
+
+        let values = [];
+        try {
+            if (mode === 'name') {
+                const { data } = await supabaseClient.from('patients').select('full_name').ilike('full_name', `%${query}%`).limit(50);
+                values = (data || []).map(r => r.full_name);
+            } else if (mode === 'diagnosis') {
+                const { data } = await supabaseClient.from('diagnoses').select('diagnosis_text').ilike('diagnosis_text', `%${query}%`).limit(50);
+                values = (data || []).map(r => r.diagnosis_text);
+            } else if (mode === 'icd') {
+                const { data } = await supabaseClient.from('diagnoses').select('icd_code').ilike('icd_code', `%${query}%`).not('icd_code', 'is', null).limit(50);
+                values = (data || []).map(r => r.icd_code);
+            } else if (mode === 'hospital') {
+                const { data } = await supabaseClient.from('encounters').select('location').ilike('location', `%${query}%`).limit(50);
+                values = (data || []).map(r => r.location);
+            }
+        } catch (err) {
+            console.error('Suggestion lookup failed:', err);
+            return;
+        }
+
+        // De-duplicate, keep the top 10
+        const unique = [...new Set(values.filter(Boolean))].slice(0, 10);
+
+        if (unique.length === 0) {
+            hideSearchSuggestions();
+            return;
+        }
+
+        el.innerHTML = unique.map(v =>
+            `<div class="icd-item" onclick="selectSearchSuggestion(${JSON.stringify(v).replace(/"/g, '&quot;')})">${v}</div>`
+        ).join('');
+        el.classList.remove('hidden');
+    }, 250);
+}
+
+function selectSearchSuggestion(value) {
+    document.getElementById('searchQuery').value = value;
+    hideSearchSuggestions();
+    runSearch();
 }
 
 async function runSearch() {

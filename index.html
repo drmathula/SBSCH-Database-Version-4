@@ -428,8 +428,7 @@
                     <option value="name">Name</option>
                     <option value="id">Patient ID</option>
                     <option value="contact">Contact Number</option>
-                    <option value="diagnosis">Diagnosis (text)</option>
-                    <option value="icd">ICD-10 Code</option>
+                    <option value="diagnosis">Diagnosis (text or ICD code)</option>
                     <option value="hospital">Hospital / Location</option>
                 </select>
             </div>
@@ -1184,36 +1183,44 @@ function renderSearchSuggestions() {
         const currentQuery = document.getElementById('searchQuery').value.trim();
         if (currentQuery !== query) return;
 
-        let values = [];
+        let suggestions = []; // { label, value }
         try {
             if (mode === 'name') {
                 const { data } = await supabaseClient.from('patients').select('full_name').ilike('full_name', `%${query}%`).limit(50);
-                values = (data || []).map(r => r.full_name);
+                suggestions = (data || []).map(r => ({ label: r.full_name, value: r.full_name }));
             } else if (mode === 'diagnosis') {
-                const { data } = await supabaseClient.from('diagnoses').select('diagnosis_text').ilike('diagnosis_text', `%${query}%`).limit(50);
-                values = (data || []).map(r => r.diagnosis_text);
-            } else if (mode === 'icd') {
-                const { data } = await supabaseClient.from('diagnoses').select('icd_code').ilike('icd_code', `%${query}%`).not('icd_code', 'is', null).limit(50);
-                values = (data || []).map(r => r.icd_code);
+                const { data } = await supabaseClient.from('diagnoses').select('diagnosis_text, icd_code')
+                    .or(`diagnosis_text.ilike.%${query}%,icd_code.ilike.%${query}%`).limit(50);
+                suggestions = (data || []).map(r => ({
+                    label: r.icd_code ? `${r.icd_code} — ${r.diagnosis_text}` : r.diagnosis_text,
+                    value: r.diagnosis_text
+                }));
             } else if (mode === 'hospital') {
                 const { data } = await supabaseClient.from('encounters').select('location').ilike('location', `%${query}%`).limit(50);
-                values = (data || []).map(r => r.location);
+                suggestions = (data || []).map(r => ({ label: r.location, value: r.location }));
             }
         } catch (err) {
             console.error('Suggestion lookup failed:', err);
             return;
         }
 
-        // De-duplicate, keep the top 10
-        const unique = [...new Set(values.filter(Boolean))].slice(0, 10);
+        // De-duplicate by label, keep the top 10
+        const seen = new Set();
+        const unique = [];
+        for (const s of suggestions) {
+            if (!s.label || seen.has(s.label)) continue;
+            seen.add(s.label);
+            unique.push(s);
+            if (unique.length >= 10) break;
+        }
 
         if (unique.length === 0) {
             hideSearchSuggestions();
             return;
         }
 
-        el.innerHTML = unique.map(v =>
-            `<div class="icd-item" onclick="selectSearchSuggestion(${JSON.stringify(v).replace(/"/g, '&quot;')})">${v}</div>`
+        el.innerHTML = unique.map(s =>
+            `<div class="icd-item" onclick="selectSearchSuggestion(${JSON.stringify(s.value).replace(/"/g, '&quot;')})">${s.label}</div>`
         ).join('');
         el.classList.remove('hidden');
     }, 250);
@@ -1248,9 +1255,9 @@ async function runSearch() {
             const { data, error } = await supabaseClient.from('patients').select('*').ilike('contact_number', `%${query}%`);
             if (error) throw error;
             patients = data;
-        } else if (mode === 'diagnosis' || mode === 'icd') {
-            const col = mode === 'diagnosis' ? 'diagnosis_text' : 'icd_code';
-            const { data: diagMatches, error: diagErr } = await supabaseClient.from('diagnoses').select('patient_id').ilike(col, `%${query}%`);
+        } else if (mode === 'diagnosis') {
+            const { data: diagMatches, error: diagErr } = await supabaseClient.from('diagnoses').select('patient_id')
+                .or(`diagnosis_text.ilike.%${query}%,icd_code.ilike.%${query}%`);
             if (diagErr) throw diagErr;
             const patientIds = [...new Set(diagMatches.map(d => d.patient_id))];
             if (patientIds.length > 0) {

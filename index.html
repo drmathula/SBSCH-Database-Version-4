@@ -258,6 +258,8 @@
             <p id="newPatientCode"></p>
         </div>
 
+        <div class="form-group"><label>Date of Registration</label><input type="date" class="form-control" id="np_regdate"></div>
+
         <div class="grid-2">
             <div class="form-group"><label>Full Name</label><input class="form-control" id="np_name"></div>
             <div class="form-group"><label>Date of Birth</label><input type="date" class="form-control" id="np_dob"></div>
@@ -327,6 +329,11 @@
                 </select>
             </div>
             <div id="np_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Consultation Notes</h3>
+            <textarea class="form-control" id="np_consultnotes" placeholder="Clinical notes from the consultation…"></textarea>
         </div>
 
         <div class="diagnosis-box">
@@ -402,6 +409,7 @@
         <div class="btn-group" style="margin-bottom:20px;">
             <button class="btn btn-primary" onclick="runSearch()">🔍 Search</button>
             <button class="btn btn-orange" onclick="exportSearchResultsToExcel()">📊 Export Results to Excel</button>
+            <button class="btn btn-purple" onclick="exportAllPatientsToExcel()">📊 Export ALL Patients to Excel</button>
             <button class="btn btn-secondary" onclick="closeModal('searchModal')">Close</button>
         </div>
         <p id="exportStatus" style="color:#666; font-size:13px;"></p>
@@ -468,6 +476,11 @@
                 </select>
             </div>
             <div id="ne_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
+        </div>
+
+        <div class="diagnosis-box">
+            <h3 style="margin-bottom:10px;">Consultation Notes</h3>
+            <textarea class="form-control" id="ne_consultnotes" placeholder="Clinical notes from the consultation…"></textarea>
         </div>
 
         <div class="diagnosis-box">
@@ -968,13 +981,14 @@ function openNewPatientModal() {
     newPatientPhotos = [];
     newPatientMeds = [];
     document.getElementById('newPatientCode').textContent = generatePatientCode();
-    ['np_name','np_dob','np_contact','np_address','np_birthweight','np_gestation','np_visitnum','np_ward','np_visitdate','np_dischargedate','np_weight','np_reason','np_icdsearch','np_freetext','np_inv_haem','np_inv_imaging','np_inv_path','np_followupdate','np_followupinstr']
+    ['np_name','np_dob','np_contact','np_address','np_birthweight','np_gestation','np_visitnum','np_ward','np_visitdate','np_dischargedate','np_weight','np_reason','np_icdsearch','np_freetext','np_inv_haem','np_inv_imaging','np_inv_path','np_followupdate','np_followupinstr','np_consultnotes']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('np_sex').value = '';
     document.getElementById('np_admtype').value = '';
     document.getElementById('np_doctype').value = '';
     document.getElementById('np_photoRow').innerHTML = '';
     document.getElementById('np_surgical').innerHTML = '';
+    document.getElementById('np_regdate').value = new Date().toISOString().slice(0, 10);
     renderDiagnosisList('np');
     renderMedRows('np');
     openModal('newPatientModal');
@@ -991,6 +1005,7 @@ async function saveNewPatient() {
         const { data: patientRows, error: patientErr } = await supabaseClient.from('patients').insert({
             patient_code: patientCode,
             full_name: name,
+            registration_date: document.getElementById('np_regdate').value || new Date().toISOString().slice(0, 10),
             date_of_birth: document.getElementById('np_dob').value || null,
             sex: document.getElementById('np_sex').value || null,
             contact_number: document.getElementById('np_contact').value || null,
@@ -1015,6 +1030,7 @@ async function saveNewPatient() {
             weight_kg: parseFloat(document.getElementById('np_weight').value) || null,
             reason_for_admission: document.getElementById('np_reason').value || null,
             surgical_intervention_html: document.getElementById('np_surgical').innerHTML || null,
+            consultation_notes: document.getElementById('np_consultnotes').value || null,
             investigations_haematology: document.getElementById('np_inv_haem').value || null,
             investigations_imaging: document.getElementById('np_inv_imaging').value || null,
             investigations_pathology: document.getElementById('np_inv_path').value || null,
@@ -1203,11 +1219,12 @@ async function openPatientDetail(patientId) {
     }
 }
 
-function calculateAge(dob) {
+function calculateAge(dob, referenceDate) {
     if (!dob) return 'N/A';
     const birth = new Date(dob);
-    const now = new Date();
-    let days = Math.floor((now - birth) / (1000 * 60 * 60 * 24));
+    const ref = referenceDate ? new Date(referenceDate) : new Date();
+    let days = Math.floor((ref - birth) / (1000 * 60 * 60 * 24));
+    if (days < 0) return 'N/A';
     if (days < 31) return `${days} days`;
     if (days < 365) return `${Math.floor(days / 30)} months`;
     return `${Math.floor(days / 365)} years`;
@@ -1218,8 +1235,9 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
     document.getElementById('detailPatientId').textContent = `Patient ID: ${patient.patient_code}`;
 
     document.getElementById('detailDemographics').innerHTML = `
+        <div class="info-card"><p>Date of Registration</p><p>${patient.registration_date || 'N/A'}</p></div>
         <div class="info-card"><p>Date of Birth</p><p>${patient.date_of_birth || 'N/A'}</p></div>
-        <div class="info-card"><p>Age</p><p>${calculateAge(patient.date_of_birth)}</p></div>
+        <div class="info-card"><p>Age (today)</p><p>${calculateAge(patient.date_of_birth)}</p></div>
         <div class="info-card"><p>Sex</p><p>${patient.sex || 'N/A'}</p></div>
         <div class="info-card"><p>Contact</p><p>${patient.contact_number || 'Not specified'}</p></div>
         <div class="info-card"><p>Address</p><p>${patient.address || 'Not specified'}</p></div>
@@ -1241,6 +1259,7 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
                             <strong>${enc.patient_type} — ${enc.location}</strong>
                             <span class="badge badge-blue">${enc.date_of_visit || 'No date'}${enc.date_of_discharge ? ' → ' + enc.date_of_discharge : ''}</span>
                         </div>
+                        <p style="font-size:13px; color:#888; margin-bottom:6px;">Age at this encounter: ${calculateAge(patient.date_of_birth, enc.date_of_visit)}</p>
                         ${enc.reason_for_admission ? `<p style="font-size:14px; margin-bottom:6px;"><strong>Reason:</strong> ${enc.reason_for_admission}</p>` : ''}
                         <p style="font-size:14px; color:#555;">
                             ${enc.ward ? 'Ward: ' + enc.ward + ' · ' : ''}
@@ -1249,6 +1268,7 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
                         </p>
                         ${encDiagnoses.length > 0 ? '<p style="margin-top:8px;">' + encDiagnoses.map(d => `<span class="badge badge-green" style="margin-right:6px;">${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}</span>`).join('') + '</p>' : ''}
                         ${enc.surgical_intervention_html ? `<div style="margin-top:8px; font-size:14px;"><strong>Surgical Intervention:</strong><div style="background:#f9f9f9; padding:8px; border-radius:6px; margin-top:4px;">${enc.surgical_intervention_html}</div></div>` : ''}
+                        ${enc.consultation_notes ? `<div style="margin-top:8px; font-size:14px;"><strong>Consultation Notes:</strong><p style="margin-top:2px;">${enc.consultation_notes}</p></div>` : ''}
                         ${(enc.investigations_haematology || enc.investigations_imaging || enc.investigations_pathology) ? `
                             <div style="margin-top:8px; font-size:14px;"><strong>Investigations:</strong>
                                 ${enc.investigations_haematology ? `<p style="margin-top:2px;">Haem/Biochem: ${enc.investigations_haematology}</p>` : ''}
@@ -1261,6 +1281,7 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
                     <div class="encounter-actions">
                         <button class="btn btn-secondary" onclick="openEditEncounterModal('${enc.id}')">✏️ Edit</button>
                         <button class="btn btn-info" onclick="generateDischargeSummaryPDF('${enc.id}')">📄 Discharge Summary PDF</button>
+                        ${enc.follow_up_date ? `<button class="btn btn-success" onclick="sendFollowUpSms('${enc.id}')">📱 Send Follow-up SMS</button>` : ''}
                     </div>
                 </div>
             `;
@@ -1287,7 +1308,7 @@ function resetEncounterForm() {
     newEncounterDiagnoses = [];
     newEncounterPhotos = [];
     newEncounterMeds = [];
-    ['ne_visitnum','ne_ward','ne_visitdate','ne_dischargedate','ne_weight','ne_reason','ne_icdsearch','ne_freetext','ne_inv_haem','ne_inv_imaging','ne_inv_path','ne_followupdate','ne_followupinstr']
+    ['ne_visitnum','ne_ward','ne_visitdate','ne_dischargedate','ne_weight','ne_reason','ne_icdsearch','ne_freetext','ne_inv_haem','ne_inv_imaging','ne_inv_path','ne_followupdate','ne_followupinstr','ne_consultnotes']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('ne_admtype').value = '';
     document.getElementById('ne_doctype').value = '';
@@ -1332,6 +1353,7 @@ async function openEditEncounterModal(encounterId) {
         document.getElementById('ne_weight').value = enc.weight_kg || '';
         document.getElementById('ne_reason').value = enc.reason_for_admission || '';
         document.getElementById('ne_surgical').innerHTML = enc.surgical_intervention_html || '';
+        document.getElementById('ne_consultnotes').value = enc.consultation_notes || '';
         document.getElementById('ne_inv_haem').value = enc.investigations_haematology || '';
         document.getElementById('ne_inv_imaging').value = enc.investigations_imaging || '';
         document.getElementById('ne_inv_path').value = enc.investigations_pathology || '';
@@ -1368,6 +1390,7 @@ async function saveNewEncounter() {
             weight_kg: parseFloat(document.getElementById('ne_weight').value) || null,
             reason_for_admission: document.getElementById('ne_reason').value || null,
             surgical_intervention_html: document.getElementById('ne_surgical').innerHTML || null,
+            consultation_notes: document.getElementById('ne_consultnotes').value || null,
             investigations_haematology: document.getElementById('ne_inv_haem').value || null,
             investigations_imaging: document.getElementById('ne_inv_imaging').value || null,
             investigations_pathology: document.getElementById('ne_inv_path').value || null,
@@ -1427,6 +1450,24 @@ async function saveNewEncounter() {
         alert('Error saving encounter: ' + (err.message || JSON.stringify(err)));
         console.error(err);
     }
+}
+
+/* =========================================================================
+   FOLLOW-UP SMS — opens the phone's own SMS app pre-filled (sent from the
+   user's own number with one tap; true silent automated sending isn't
+   possible from a browser app without a paid SMS gateway service)
+   ========================================================================= */
+function sendFollowUpSms(encounterId) {
+    if (!currentPatient) return;
+    const enc = currentPatientEncounters.find(e => e.id === encounterId);
+    if (!enc) return;
+    if (!currentPatient.contact_number) { alert('This patient has no contact number on file.'); return; }
+
+    const message = `Dear parent/guardian of ${currentPatient.full_name}, please bring your child for a follow-up visit at ${HOSPITAL_NAME} on ${enc.follow_up_date}.${enc.follow_up_instructions ? ' ' + enc.follow_up_instructions : ''} - ${PROVIDER_NAME}`;
+    const number = currentPatient.contact_number.replace(/\s+/g, '');
+    // sms: URI works on mobile browsers to open the native messaging app pre-filled
+    const smsUrl = `sms:${number}?body=${encodeURIComponent(message)}`;
+    window.location.href = smsUrl;
 }
 
 /* =========================================================================
@@ -1524,6 +1565,14 @@ async function generateDischargeSummaryPDF(encounterId) {
             doc.setFont('helvetica', 'bold'); doc.text('Surgical Intervention', margin, y); y += 6;
             doc.setFont('helvetica', 'normal');
             y = addWrappedText(doc, stripHtml(enc.surgical_intervention_html), margin, y, pageWidth - margin * 2);
+            y += 4;
+        }
+
+        if (enc.consultation_notes) {
+            if (y > 260) { doc.addPage(); y = 15; }
+            doc.setFont('helvetica', 'bold'); doc.text('Consultation Notes', margin, y); y += 6;
+            doc.setFont('helvetica', 'normal');
+            y = addWrappedText(doc, enc.consultation_notes, margin, y, pageWidth - margin * 2);
             y += 4;
         }
 
@@ -1654,18 +1703,12 @@ async function deleteCurrentPatient() {
 /* =========================================================================
    EXCEL EXPORT (research data export from search results)
    ========================================================================= */
-async function exportSearchResultsToExcel() {
-    const statusEl = document.getElementById('exportStatus');
-    if (!lastSearchResults || lastSearchResults.length === 0) {
-        statusEl.textContent = 'Run a search first, then export the results.';
-        return;
-    }
-
-    statusEl.textContent = `Building export for ${lastSearchResults.length} patient(s)…`;
+async function buildAndDownloadExcel(patients, statusEl, filenamePrefix) {
+    statusEl.textContent = `Building export for ${patients.length} patient(s)…`;
     showLoading('Building Excel export…');
     try {
         const rows = [];
-        for (const patient of lastSearchResults) {
+        for (const patient of patients) {
             const { data: encounters } = await supabaseClient.from('encounters').select('*').eq('patient_id', patient.id);
             const { data: diagnoses } = await supabaseClient.from('diagnoses').select('*').eq('patient_id', patient.id);
             const { data: medications } = await supabaseClient.from('medications').select('*').eq('patient_id', patient.id);
@@ -1679,8 +1722,10 @@ async function exportSearchResultsToExcel() {
                 rows.push({
                     'Patient ID': patient.patient_code,
                     'Full Name': patient.full_name,
+                    'Date of Registration': patient.registration_date || '',
                     'Date of Birth': patient.date_of_birth || '',
-                    'Age': calculateAge(patient.date_of_birth),
+                    'Age (today)': calculateAge(patient.date_of_birth),
+                    'Age at Encounter': enc ? calculateAge(patient.date_of_birth, enc.date_of_visit) : '',
                     'Sex': patient.sex || '',
                     'Contact': patient.contact_number || '',
                     'Address': patient.address || '',
@@ -1695,6 +1740,7 @@ async function exportSearchResultsToExcel() {
                     'Reason for Admission': enc ? enc.reason_for_admission || '' : '',
                     'Diagnoses (ICD / Text)': encDiagnoses.map(d => `${d.icd_code ? d.icd_code + ' - ' : ''}${d.diagnosis_text}`).join(' | '),
                     'Surgical Intervention': enc ? stripHtml(enc.surgical_intervention_html) : '',
+                    'Consultation Notes': enc ? enc.consultation_notes || '' : '',
                     'Investigations - Haem/Biochem': enc ? enc.investigations_haematology || '' : '',
                     'Investigations - Imaging': enc ? enc.investigations_imaging || '' : '',
                     'Investigations - Pathology': enc ? enc.investigations_pathology || '' : '',
@@ -1709,10 +1755,39 @@ async function exportSearchResultsToExcel() {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Export');
         const stamp = new Date().toISOString().slice(0, 10);
-        XLSX.writeFile(wb, `SBSCH_Export_${stamp}.xlsx`);
+        XLSX.writeFile(wb, `${filenamePrefix}_${stamp}.xlsx`);
 
-        statusEl.textContent = `Exported ${rows.length} row(s) from ${lastSearchResults.length} patient(s).`;
+        statusEl.textContent = `Exported ${rows.length} row(s) from ${patients.length} patient(s).`;
         hideLoading();
+    } catch (err) {
+        hideLoading();
+        statusEl.textContent = 'Export failed — see console for details.';
+        console.error(err);
+    }
+}
+
+async function exportSearchResultsToExcel() {
+    const statusEl = document.getElementById('exportStatus');
+    if (!lastSearchResults || lastSearchResults.length === 0) {
+        statusEl.textContent = 'Run a search first, then export the results.';
+        return;
+    }
+    await buildAndDownloadExcel(lastSearchResults, statusEl, 'SBSCH_Search_Export');
+}
+
+async function exportAllPatientsToExcel() {
+    const statusEl = document.getElementById('exportStatus');
+    statusEl.textContent = 'Loading all patients…';
+    showLoading('Loading all patients…');
+    try {
+        const { data: allPatients, error } = await supabaseClient.from('patients').select('*');
+        if (error) throw error;
+        hideLoading();
+        if (!allPatients || allPatients.length === 0) {
+            statusEl.textContent = 'No patients found in the database.';
+            return;
+        }
+        await buildAndDownloadExcel(allPatients, statusEl, 'SBSCH_ALL_Patients_Export');
     } catch (err) {
         hideLoading();
         statusEl.textContent = 'Export failed — see console for details.';

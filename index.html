@@ -697,6 +697,7 @@ window.onload = function () {
             document.getElementById('signinScreen').classList.add('hidden');
             document.getElementById('appScreen').classList.remove('hidden');
             loadRecentPatients();
+            loadLogoDataUrl(); // pre-cache so Share-via-WhatsApp never has to wait on it
         }
     });
 
@@ -1589,7 +1590,10 @@ function stripHtml(html) {
     return (tmp.textContent || tmp.innerText || '').trim();
 }
 
+let cachedLogoDataUrl = null;
+
 function loadLogoDataUrl() {
+    if (cachedLogoDataUrl) return Promise.resolve(cachedLogoDataUrl);
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -1598,7 +1602,8 @@ function loadLogoDataUrl() {
                 const canvas = document.createElement('canvas');
                 canvas.width = img.width; canvas.height = img.height;
                 canvas.getContext('2d').drawImage(img, 0, 0);
-                resolve(canvas.toDataURL('image/png'));
+                cachedLogoDataUrl = canvas.toDataURL('image/png');
+                resolve(cachedLogoDataUrl);
             } catch (e) { resolve(null); }
         };
         img.onerror = function () { resolve(null); };
@@ -1609,7 +1614,7 @@ function loadLogoDataUrl() {
 /* =========================================================================
    DISCHARGE SUMMARY PDF
    ========================================================================= */
-async function buildDischargeSummaryDoc(encounterId) {
+function buildDischargeSummaryDocCore(encounterId, logoDataUrl) {
     if (!currentPatient) return null;
     const enc = currentPatientEncounters.find(e => e.id === encounterId);
     if (!enc) throw new Error('Encounter not found');
@@ -1623,7 +1628,6 @@ async function buildDischargeSummaryDoc(encounterId) {
     const margin = 15;
     let y = 15;
 
-    const logoDataUrl = await loadLogoDataUrl();
     if (logoDataUrl) {
         doc.addImage(logoDataUrl, 'PNG', margin, y, 22, 22);
     }
@@ -1729,6 +1733,13 @@ async function buildDischargeSummaryDoc(encounterId) {
     return { doc, filename };
 }
 
+// Async wrapper used by the normal "Download PDF" button — loads/caches the logo first.
+// Timing doesn't matter here since a plain download has no special permission requirement.
+async function buildDischargeSummaryDoc(encounterId) {
+    const logoDataUrl = await loadLogoDataUrl();
+    return buildDischargeSummaryDocCore(encounterId, logoDataUrl);
+}
+
 async function generateDischargeSummaryPDF(encounterId) {
     showLoading('Generating discharge summary…');
     try {
@@ -1750,34 +1761,36 @@ async function generateDischargeSummaryPDF(encounterId) {
    possible from a browser app. Falls back to a normal download if the
    browser/device doesn't support sharing files.
    ========================================================================= */
-async function shareDischargeSummaryWhatsApp(encounterId) {
-    showLoading('Preparing summary to share…');
+function shareDischargeSummaryWhatsApp(encounterId) {
+    // IMPORTANT: everything here must run synchronously, with no 'await' before
+    // navigator.share() — browsers require the share call to happen within the
+    // same user-gesture (tap) with no delay, or it's blocked as "permission denied".
     try {
-        const result = await buildDischargeSummaryDoc(encounterId);
-        if (!result) { hideLoading(); return; }
+        const logoDataUrl = cachedLogoDataUrl; // may be null if not preloaded yet — PDF just omits the logo in that case
+        const result = buildDischargeSummaryDocCore(encounterId, logoDataUrl);
+        if (!result) return;
         const { doc, filename } = result;
         const blob = doc.output('blob');
         const file = new File([blob], filename, { type: 'application/pdf' });
 
-        hideLoading();
-
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
+            navigator.share({
                 files: [file],
                 title: 'Discharge Summary',
                 text: `Discharge summary for ${currentPatient.full_name} from ${HOSPITAL_NAME}`
+            }).catch(err => {
+                if (err.name !== 'AbortError') {
+                    alert('Error sharing discharge summary: ' + (err.message || JSON.stringify(err)));
+                    console.error(err);
+                }
             });
         } else {
             alert('Direct sharing isn\'t supported on this browser/device. The PDF will download instead — you can attach it to WhatsApp manually from your downloads.');
             doc.save(filename);
         }
     } catch (err) {
-        hideLoading();
-        // AbortError happens when the person cancels the share sheet — not a real error
-        if (err.name !== 'AbortError') {
-            alert('Error sharing discharge summary: ' + (err.message || JSON.stringify(err)));
-            console.error(err);
-        }
+        alert('Error preparing discharge summary: ' + (err.message || JSON.stringify(err)));
+        console.error(err);
     }
 }
 

@@ -1389,6 +1389,7 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
                     <div class="encounter-actions">
                         <button class="btn btn-secondary" onclick="openEditEncounterModal('${enc.id}')">✏️ Edit</button>
                         <button class="btn btn-info" onclick="generateDischargeSummaryPDF('${enc.id}')">📄 Discharge Summary PDF</button>
+                        <button class="btn btn-success" onclick="shareDischargeSummaryWhatsApp('${enc.id}')">📲 Share via WhatsApp</button>
                         ${enc.follow_up_date ? `<button class="btn btn-success" onclick="sendFollowUpSms('${enc.id}')">📱 Send Follow-up SMS</button>` : ''}
                     </div>
                 </div>
@@ -1608,130 +1609,175 @@ function loadLogoDataUrl() {
 /* =========================================================================
    DISCHARGE SUMMARY PDF
    ========================================================================= */
+async function buildDischargeSummaryDoc(encounterId) {
+    if (!currentPatient) return null;
+    const enc = currentPatientEncounters.find(e => e.id === encounterId);
+    if (!enc) throw new Error('Encounter not found');
+    const encDiagnoses = currentPatientDiagnoses.filter(d => d.encounter_id === encounterId);
+    const encMeds = currentPatientMedications.filter(m => m.encounter_id === encounterId);
+    const p = currentPatient;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+    let y = 15;
+
+    const logoDataUrl = await loadLogoDataUrl();
+    if (logoDataUrl) {
+        doc.addImage(logoDataUrl, 'PNG', margin, y, 22, 22);
+    }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.text(HOSPITAL_NAME, pageWidth / 2, y + 8, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+    doc.text('Discharge Summary', pageWidth / 2, y + 16, { align: 'center' });
+    y += 30;
+
+    doc.setDrawColor(180); doc.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text('Patient Details', margin, y); y += 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    const demoLines = [
+        `Name: ${p.full_name}     Patient ID: ${p.patient_code}`,
+        `Date of Birth: ${p.date_of_birth || 'N/A'}     Age: ${calculateAge(p.date_of_birth)}     Sex: ${p.sex || 'N/A'}`,
+        `Contact: ${p.contact_number || 'N/A'}     Location: ${enc.location || 'N/A'} (${enc.patient_type || ''})`
+    ];
+    demoLines.forEach(line => { doc.text(line, margin, y); y += 5.5; });
+    y += 3;
+
+    doc.setFont('helvetica', 'bold'); doc.text('Admission / Discharge', margin, y); y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Admitted: ${enc.date_of_visit || 'N/A'}     Discharged: ${enc.date_of_discharge || 'N/A'}     Ward: ${enc.ward || 'N/A'}`, margin, y);
+    y += 8;
+
+    if (enc.reason_for_admission) {
+        doc.setFont('helvetica', 'bold'); doc.text('Reason for Admission', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        y = addWrappedText(doc, enc.reason_for_admission, margin, y, pageWidth - margin * 2);
+        y += 4;
+    }
+
+    if (encDiagnoses.length > 0) {
+        doc.setFont('helvetica', 'bold'); doc.text('Diagnoses', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        encDiagnoses.forEach(d => {
+            y = addWrappedText(doc, `• ${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}`, margin, y, pageWidth - margin * 2);
+        });
+        y += 4;
+    }
+
+    if (enc.surgical_intervention_html) {
+        doc.setFont('helvetica', 'bold'); doc.text('Surgical Intervention', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        y = addWrappedText(doc, stripHtml(enc.surgical_intervention_html), margin, y, pageWidth - margin * 2);
+        y += 4;
+    }
+
+    if (enc.consultation_notes) {
+        if (y > 260) { doc.addPage(); y = 15; }
+        doc.setFont('helvetica', 'bold'); doc.text('Consultation Notes', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        y = addWrappedText(doc, enc.consultation_notes, margin, y, pageWidth - margin * 2);
+        y += 4;
+    }
+
+    const invBlocks = [
+        ['Haematological / Biochemical Investigations', enc.investigations_haematology],
+        ['Imaging Investigations', enc.investigations_imaging],
+        ['Pathological Investigations', enc.investigations_pathology]
+    ];
+    invBlocks.forEach(([label, val]) => {
+        if (!val) return;
+        if (y > 260) { doc.addPage(); y = 15; }
+        doc.setFont('helvetica', 'bold'); doc.text(label, margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        y = addWrappedText(doc, val, margin, y, pageWidth - margin * 2);
+        y += 4;
+    });
+
+    if (encMeds.length > 0) {
+        if (y > 250) { doc.addPage(); y = 15; }
+        doc.setFont('helvetica', 'bold'); doc.text('Medications', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        encMeds.forEach(m => {
+            const line = `• ${m.drug_name}${m.dose ? '  ' + m.dose : ''}${m.frequency ? '  ' + m.frequency : ''}${m.duration ? '  for ' + m.duration : ''}${m.route ? '  (' + m.route + ')' : ''}`;
+            y = addWrappedText(doc, line, margin, y, pageWidth - margin * 2);
+        });
+        y += 4;
+    }
+
+    if (enc.follow_up_date || enc.follow_up_instructions) {
+        if (y > 260) { doc.addPage(); y = 15; }
+        doc.setFont('helvetica', 'bold'); doc.text('Follow-up', margin, y); y += 6;
+        doc.setFont('helvetica', 'normal');
+        y = addWrappedText(doc, `Date: ${enc.follow_up_date || 'N/A'}     Instructions: ${enc.follow_up_instructions || 'N/A'}`, margin, y, pageWidth - margin * 2);
+        y += 6;
+    }
+
+    if (y > 250) { doc.addPage(); y = 15; }
+    y += 10;
+    doc.setDrawColor(180); doc.line(margin, y, pageWidth - margin, y); y += 8;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text(`${PROVIDER_NAME} ${PROVIDER_CREDENTIALS}`, margin, y); y += 5.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text(PROVIDER_SPECIALTY + ' (Principal Care Provider)', margin, y); y += 5.5;
+    doc.text(PROVIDER_LICENSE, margin, y);
+
+    const filename = `${p.patient_code}_Discharge_Summary_${enc.date_of_discharge || 'draft'}.pdf`;
+    return { doc, filename };
+}
+
 async function generateDischargeSummaryPDF(encounterId) {
-    if (!currentPatient) return;
     showLoading('Generating discharge summary…');
     try {
-        const enc = currentPatientEncounters.find(e => e.id === encounterId);
-        if (!enc) throw new Error('Encounter not found');
-        const encDiagnoses = currentPatientDiagnoses.filter(d => d.encounter_id === encounterId);
-        const encMeds = currentPatientMedications.filter(m => m.encounter_id === encounterId);
-        const p = currentPatient;
-
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 15;
-        let y = 15;
-
-        const logoDataUrl = await loadLogoDataUrl();
-        if (logoDataUrl) {
-            doc.addImage(logoDataUrl, 'PNG', margin, y, 22, 22);
-        }
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
-        doc.text(HOSPITAL_NAME, pageWidth / 2, y + 8, { align: 'center' });
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
-        doc.text('Discharge Summary', pageWidth / 2, y + 16, { align: 'center' });
-        y += 30;
-
-        doc.setDrawColor(180); doc.line(margin, y, pageWidth - margin, y);
-        y += 8;
-
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
-        doc.text('Patient Details', margin, y); y += 6;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-        const demoLines = [
-            `Name: ${p.full_name}     Patient ID: ${p.patient_code}`,
-            `Date of Birth: ${p.date_of_birth || 'N/A'}     Age: ${calculateAge(p.date_of_birth)}     Sex: ${p.sex || 'N/A'}`,
-            `Contact: ${p.contact_number || 'N/A'}     Location: ${enc.location || 'N/A'} (${enc.patient_type || ''})`
-        ];
-        demoLines.forEach(line => { doc.text(line, margin, y); y += 5.5; });
-        y += 3;
-
-        doc.setFont('helvetica', 'bold'); doc.text('Admission / Discharge', margin, y); y += 6;
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Admitted: ${enc.date_of_visit || 'N/A'}     Discharged: ${enc.date_of_discharge || 'N/A'}     Ward: ${enc.ward || 'N/A'}`, margin, y);
-        y += 8;
-
-        if (enc.reason_for_admission) {
-            doc.setFont('helvetica', 'bold'); doc.text('Reason for Admission', margin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            y = addWrappedText(doc, enc.reason_for_admission, margin, y, pageWidth - margin * 2);
-            y += 4;
-        }
-
-        if (encDiagnoses.length > 0) {
-            doc.setFont('helvetica', 'bold'); doc.text('Diagnoses', margin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            encDiagnoses.forEach(d => {
-                y = addWrappedText(doc, `• ${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}`, margin, y, pageWidth - margin * 2);
-            });
-            y += 4;
-        }
-
-        if (enc.surgical_intervention_html) {
-            doc.setFont('helvetica', 'bold'); doc.text('Surgical Intervention', margin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            y = addWrappedText(doc, stripHtml(enc.surgical_intervention_html), margin, y, pageWidth - margin * 2);
-            y += 4;
-        }
-
-        if (enc.consultation_notes) {
-            if (y > 260) { doc.addPage(); y = 15; }
-            doc.setFont('helvetica', 'bold'); doc.text('Consultation Notes', margin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            y = addWrappedText(doc, enc.consultation_notes, margin, y, pageWidth - margin * 2);
-            y += 4;
-        }
-
-        const invBlocks = [
-            ['Haematological / Biochemical Investigations', enc.investigations_haematology],
-            ['Imaging Investigations', enc.investigations_imaging],
-            ['Pathological Investigations', enc.investigations_pathology]
-        ];
-        invBlocks.forEach(([label, val]) => {
-            if (!val) return;
-            if (y > 260) { doc.addPage(); y = 15; }
-            doc.setFont('helvetica', 'bold'); doc.text(label, margin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            y = addWrappedText(doc, val, margin, y, pageWidth - margin * 2);
-            y += 4;
-        });
-
-        if (encMeds.length > 0) {
-            if (y > 250) { doc.addPage(); y = 15; }
-            doc.setFont('helvetica', 'bold'); doc.text('Medications', margin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            encMeds.forEach(m => {
-                const line = `• ${m.drug_name}${m.dose ? '  ' + m.dose : ''}${m.frequency ? '  ' + m.frequency : ''}${m.duration ? '  for ' + m.duration : ''}${m.route ? '  (' + m.route + ')' : ''}`;
-                y = addWrappedText(doc, line, margin, y, pageWidth - margin * 2);
-            });
-            y += 4;
-        }
-
-        if (enc.follow_up_date || enc.follow_up_instructions) {
-            if (y > 260) { doc.addPage(); y = 15; }
-            doc.setFont('helvetica', 'bold'); doc.text('Follow-up', margin, y); y += 6;
-            doc.setFont('helvetica', 'normal');
-            y = addWrappedText(doc, `Date: ${enc.follow_up_date || 'N/A'}     Instructions: ${enc.follow_up_instructions || 'N/A'}`, margin, y, pageWidth - margin * 2);
-            y += 6;
-        }
-
-        if (y > 250) { doc.addPage(); y = 15; }
-        y += 10;
-        doc.setDrawColor(180); doc.line(margin, y, pageWidth - margin, y); y += 8;
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
-        doc.text(`${PROVIDER_NAME} ${PROVIDER_CREDENTIALS}`, margin, y); y += 5.5;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-        doc.text(PROVIDER_SPECIALTY + ' (Principal Care Provider)', margin, y); y += 5.5;
-        doc.text(PROVIDER_LICENSE, margin, y);
-
-        doc.save(`${p.patient_code}_Discharge_Summary_${enc.date_of_discharge || 'draft'}.pdf`);
+        const result = await buildDischargeSummaryDoc(encounterId);
+        if (!result) { hideLoading(); return; }
+        result.doc.save(result.filename);
         hideLoading();
     } catch (err) {
         hideLoading();
         alert('Error generating discharge summary: ' + (err.message || JSON.stringify(err)));
         console.error(err);
+    }
+}
+
+/* =========================================================================
+   SHARE DISCHARGE SUMMARY VIA WHATSAPP (or any installed app) — uses the
+   phone's native Share sheet with the PDF attached. Requires the person to
+   pick WhatsApp and the contact themselves; true silent auto-send isn't
+   possible from a browser app. Falls back to a normal download if the
+   browser/device doesn't support sharing files.
+   ========================================================================= */
+async function shareDischargeSummaryWhatsApp(encounterId) {
+    showLoading('Preparing summary to share…');
+    try {
+        const result = await buildDischargeSummaryDoc(encounterId);
+        if (!result) { hideLoading(); return; }
+        const { doc, filename } = result;
+        const blob = doc.output('blob');
+        const file = new File([blob], filename, { type: 'application/pdf' });
+
+        hideLoading();
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Discharge Summary',
+                text: `Discharge summary for ${currentPatient.full_name} from ${HOSPITAL_NAME}`
+            });
+        } else {
+            alert('Direct sharing isn\'t supported on this browser/device. The PDF will download instead — you can attach it to WhatsApp manually from your downloads.');
+            doc.save(filename);
+        }
+    } catch (err) {
+        hideLoading();
+        // AbortError happens when the person cancels the share sheet — not a real error
+        if (err.name !== 'AbortError') {
+            alert('Error sharing discharge summary: ' + (err.message || JSON.stringify(err)));
+            console.error(err);
+        }
     }
 }
 

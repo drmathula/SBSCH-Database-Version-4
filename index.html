@@ -838,7 +838,7 @@ function addFreeTextDiagnosis(prefix) {
 function addDiagnosis(prefix, icdCode, text) {
     const list = prefix === 'np' ? newPatientDiagnoses : newEncounterDiagnoses;
     if (list.length >= 10) { alert('Maximum 10 diagnoses per encounter.'); return; }
-    list.push({ icd_code: icdCode, diagnosis_text: text });
+    list.push({ icd_code: icdCode, diagnosis_text: text, notes: '' });
     renderDiagnosisList(prefix);
 }
 
@@ -848,13 +848,22 @@ function removeDiagnosis(prefix, index) {
     renderDiagnosisList(prefix);
 }
 
+function updateDiagnosisNote(prefix, index, value) {
+    const list = prefix === 'np' ? newPatientDiagnoses : newEncounterDiagnoses;
+    if (list[index]) list[index].notes = value;
+}
+
 function renderDiagnosisList(prefix) {
     const list = prefix === 'np' ? newPatientDiagnoses : newEncounterDiagnoses;
     const el = document.getElementById(prefix + '_diagnosisList');
     el.innerHTML = list.map((d, i) => `
-        <div class="diagnosis-item">
-            <span>${d.icd_code ? '<strong>' + d.icd_code + '</strong> — ' : ''}${d.diagnosis_text}</span>
-            <button class="btn btn-danger" style="padding:6px 12px;" onclick="removeDiagnosis('${prefix}',${i})">Remove</button>
+        <div class="diagnosis-item" style="flex-direction:column; align-items:stretch; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>${d.icd_code ? '<strong>' + d.icd_code + '</strong> — ' : ''}${d.diagnosis_text}</span>
+                <button class="btn btn-danger" style="padding:6px 12px;" onclick="removeDiagnosis('${prefix}',${i})">Remove</button>
+            </div>
+            <input class="form-control" style="font-size:14px;" placeholder="Note about this diagnosis (e.g. side, status, follow-up)…"
+                   value="${(d.notes || '').replace(/"/g, '&quot;')}" onchange="updateDiagnosisNote('${prefix}',${i},this.value)">
         </div>
     `).join('') || '<p style="color:#999;">No diagnoses added yet</p>';
     document.getElementById(prefix + '_diagCount').textContent = list.length;
@@ -1077,7 +1086,7 @@ async function saveNewPatient() {
 
         if (newPatientDiagnoses.length > 0) {
             const diagRows = newPatientDiagnoses.map(d => ({
-                encounter_id: encounterId, patient_id: patientId, icd_code: d.icd_code, diagnosis_text: d.diagnosis_text
+                encounter_id: encounterId, patient_id: patientId, icd_code: d.icd_code, diagnosis_text: d.diagnosis_text, notes: d.notes || null
             }));
             const { error: diagErr } = await supabaseClient.from('diagnoses').insert(diagRows);
             if (diagErr) throw diagErr;
@@ -1375,7 +1384,7 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
                             ${enc.admission_type ? enc.admission_type + ' · ' : ''}
                             ${enc.weight_kg ? enc.weight_kg + ' kg' : ''}
                         </p>
-                        ${encDiagnoses.length > 0 ? '<p style="margin-top:8px;">' + encDiagnoses.map(d => `<span class="badge badge-green" style="margin-right:6px;">${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}</span>`).join('') + '</p>' : ''}
+                        ${encDiagnoses.length > 0 ? '<p style="margin-top:8px;">' + encDiagnoses.map(d => `<span class="badge badge-green" style="margin-right:6px;">${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}${d.notes ? ' (' + d.notes + ')' : ''}</span>`).join('') + '</p>' : ''}
                         ${enc.surgical_intervention_html ? `<div style="margin-top:8px; font-size:14px;"><strong>Surgical Intervention:</strong><div style="background:#f9f9f9; padding:8px; border-radius:6px; margin-top:4px;">${enc.surgical_intervention_html}</div></div>` : ''}
                         ${enc.consultation_notes ? `<div style="margin-top:8px; font-size:14px;"><strong>Consultation Notes:</strong><p style="margin-top:2px;">${enc.consultation_notes}</p></div>` : ''}
                         ${(enc.investigations_haematology || enc.investigations_imaging || enc.investigations_pathology) ? `
@@ -1470,7 +1479,7 @@ async function openEditEncounterModal(encounterId) {
         document.getElementById('ne_followupdate').value = enc.follow_up_date || '';
         document.getElementById('ne_followupinstr').value = enc.follow_up_instructions || '';
 
-        newEncounterDiagnoses = (diagnoses || []).map(d => ({ icd_code: d.icd_code, diagnosis_text: d.diagnosis_text }));
+        newEncounterDiagnoses = (diagnoses || []).map(d => ({ icd_code: d.icd_code, diagnosis_text: d.diagnosis_text, notes: d.notes || '' }));
         renderDiagnosisList('ne');
         newEncounterMeds = (meds || []).map(m => ({ drug_name: m.drug_name, dose: m.dose, frequency: m.frequency, duration: m.duration, route: m.route }));
         renderMedRows('ne');
@@ -1525,7 +1534,7 @@ async function saveNewEncounter() {
 
         if (newEncounterDiagnoses.length > 0) {
             const diagRows = newEncounterDiagnoses.map(d => ({
-                encounter_id: encounterId, patient_id: currentPatient.id, icd_code: d.icd_code, diagnosis_text: d.diagnosis_text
+                encounter_id: encounterId, patient_id: currentPatient.id, icd_code: d.icd_code, diagnosis_text: d.diagnosis_text, notes: d.notes || null
             }));
             const { error: diagErr } = await supabaseClient.from('diagnoses').insert(diagRows);
             if (diagErr) throw diagErr;
@@ -1678,7 +1687,7 @@ function buildDischargeSummaryDocCore(encounterId, logoDataUrl) {
         doc.setFont('helvetica', 'bold'); doc.text('Diagnoses', margin, y); y += 6;
         doc.setFont('helvetica', 'normal');
         encDiagnoses.forEach(d => {
-            y = addWrappedText(doc, `• ${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}`, margin, y, pageWidth - margin * 2);
+            y = addWrappedText(doc, `• ${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}${d.notes ? ' (' + d.notes + ')' : ''}`, margin, y, pageWidth - margin * 2);
         });
         y += 4;
     }
@@ -1790,7 +1799,7 @@ function shareDischargeSummaryWhatsApp(encounterId) {
     lines.push(`Admitted: ${enc.date_of_visit || 'N/A'}   Discharged: ${enc.date_of_discharge || 'N/A'}`);
     if (enc.reason_for_admission) lines.push(`Reason: ${enc.reason_for_admission}`);
     if (encDiagnoses.length > 0) {
-        lines.push(`Diagnoses: ${encDiagnoses.map(d => d.icd_code ? `${d.icd_code} - ${d.diagnosis_text}` : d.diagnosis_text).join('; ')}`);
+        lines.push(`Diagnoses: ${encDiagnoses.map(d => `${d.icd_code ? d.icd_code + ' - ' : ''}${d.diagnosis_text}${d.notes ? ' (' + d.notes + ')' : ''}`).join('; ')}`);
     }
     if (enc.surgical_intervention_html) {
         lines.push(`Surgical Intervention: ${stripHtml(enc.surgical_intervention_html)}`);
@@ -1974,7 +1983,7 @@ async function buildAndDownloadExcel(patients, statusEl, filenamePrefix) {
                     'Date of Admission/Visit': enc ? enc.date_of_visit || '' : '',
                     'Date of Discharge': enc ? enc.date_of_discharge || '' : '',
                     'Reason for Admission': enc ? enc.reason_for_admission || '' : '',
-                    'Diagnoses (ICD / Text)': encDiagnoses.map(d => `${d.icd_code ? d.icd_code + ' - ' : ''}${d.diagnosis_text}`).join(' | '),
+                    'Diagnoses (ICD / Text)': encDiagnoses.map(d => `${d.icd_code ? d.icd_code + ' - ' : ''}${d.diagnosis_text}${d.notes ? ' (' + d.notes + ')' : ''}`).join(' | '),
                     'Surgical Intervention': enc ? stripHtml(enc.surgical_intervention_html) : '',
                     'Consultation Notes': enc ? enc.consultation_notes || '' : '',
                     'Investigations - Haem/Biochem': enc ? enc.investigations_haematology || '' : '',

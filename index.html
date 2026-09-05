@@ -798,7 +798,10 @@ window.addEventListener('message', function(event) {
     if (event.data && event.data.type === 'operativeNote' && opNoteFinderTarget) {
         const field = document.getElementById(opNoteFinderTarget + '_surgical');
         if (field) {
-            field.innerHTML = event.data.text.replace(/\n/g, '<br>');
+            const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+            const noteHtml = event.data.text.replace(/\n/g, '<br>');
+            const entryHtml = '<p><strong>' + dateStr + '</strong></p><p>' + noteHtml + '</p>';
+            field.innerHTML = field.innerHTML ? field.innerHTML + entryHtml : entryHtml;
             closeModal('opNoteFinderModal');
         }
     }

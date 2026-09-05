@@ -328,6 +328,7 @@
                     <option value="5">Large</option>
                     <option value="7">Extra large</option>
                 </select>
+               <button type="button" onclick="openOpNoteFinder('np')" style="margin-left:auto; background:#1976d2; color:white; border:none;">🔍 Find Op Note</button>
             </div>
             <div id="np_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
         </div>
@@ -506,6 +507,7 @@
                     <option value="5">Large</option>
                     <option value="7">Extra large</option>
                 </select>
+               <button type="button" onclick="openOpNoteFinder('ne')" style="margin-left:auto; background:#1976d2; color:white; border:none;">🔍 Find Op Note</button>
             </div>
             <div id="ne_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
         </div>
@@ -565,7 +567,20 @@
     </div>
 </div>
 
-<!-- ============ LOADING OVERLAY ============ -->
+<!-- ============ OP NOTE FINDER MODAL ============ -->
+<div id="opNoteFinderModal" class="modal">
+    <div class="modal-content" style="max-width:900px; padding:0; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 20px; border-bottom:1px solid #eee;">
+            <h3 style="margin:0;">Operative Note Finder</h3>
+            <button class="btn btn-secondary" onclick="closeModal('opNoteFinderModal')">Close</button>
+        </div>
+        <iframe id="opNoteFinderFrame" src="https://op-note-helper.lovable.app" style="width:100%; height:70vh; border:none;"></iframe>
+        <div style="padding:12px 20px; background:#f5f5f5; font-size:13px; color:#666;">
+            Generate your note above, then click <strong>Copy</strong> inside the app — it will insert automatically below.
+        </div>
+    </div>
+</div>
+   <!-- ============ LOADING OVERLAY ============ -->
 <div id="loadingOverlay" class="loading">
     <div class="spinner"></div>
     <p id="loadingText">Working…</p>
@@ -771,6 +786,23 @@ function hideLoading() {
    ========================================================================= */
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 function openModal(id) { document.getElementById(id).classList.add('active'); }
+   let opNoteFinderTarget = null; // 'np' or 'ne' — which surgical field to fill
+
+function openOpNoteFinder(prefix) {
+    opNoteFinderTarget = prefix;
+    openModal('opNoteFinderModal');
+}
+
+window.addEventListener('message', function(event) {
+    if (event.origin !== 'https://op-note-helper.lovable.app') return;
+    if (event.data && event.data.type === 'operativeNote' && opNoteFinderTarget) {
+        const field = document.getElementById(opNoteFinderTarget + '_surgical');
+        if (field) {
+            field.innerHTML = event.data.text.replace(/\n/g, '<br>');
+            closeModal('opNoteFinderModal');
+        }
+    }
+});
 
 /* =========================================================================
    ICD-10 SEARCH (shared by new-patient and new-encounter forms)

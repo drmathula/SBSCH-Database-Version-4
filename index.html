@@ -165,6 +165,11 @@
     const PROVIDER_CREDENTIALS = "MBBS MD MRCS (Eng)";
     const PROVIDER_SPECIALTY = "Consultant Paediatric Surgeon";
     const PROVIDER_LICENSE = "SLMC 19629  |  GMC 7206553";
+   
+function expandLocationName(location) {
+    if (location === 'SBSCH') return "Sirimavo Bandaranaike Specialised Children's Hospital - Peradeniya";
+    return location;
+}
 </script>
 
 <div class="container">
@@ -1753,11 +1758,8 @@ function buildDischargeSummaryDocCore(encounterId, logoDataUrl) {
     const margin = 15;
     let y = 15;
 
-    if (logoDataUrl) {
-        doc.addImage(logoDataUrl, 'PNG', margin, y, 22, 22);
-    }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
-    doc.text(enc.location || HOSPITAL_NAME, pageWidth / 2, y + 8, { align: 'center' });
+   doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+doc.text(enc.location ? expandLocationName(enc.location) : HOSPITAL_NAME, pageWidth / 2, y + 8, { align: 'center' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
     doc.text('Discharge Summary', pageWidth / 2, y + 16, { align: 'center' });
     y += 30;
@@ -1896,7 +1898,7 @@ function shareDischargeSummaryWhatsApp(encounterId) {
     const p = currentPatient;
 
     const lines = [];
-    lines.push(`*${enc.location || HOSPITAL_NAME}*`);
+    lines.push(`*${enc.location ? expandLocationName(enc.location) : HOSPITAL_NAME}*`);
     lines.push(`*Discharge Summary*`);
     lines.push('');
     lines.push(`Patient: ${p.full_name}     Admission No: ${enc.visit_or_admission_number || 'N/A'}`);

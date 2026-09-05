@@ -329,12 +329,16 @@
                     <option value="7">Extra large</option>
                 </select>
                <button type="button" onclick="openOpNoteFinder('np')" style="margin-left:auto; background:#1976d2; color:white; border:none;">🔍 Find Op Note</button>
+               <button type="button" onclick="insertDateStamp('np_surgical', true)" style="background:#43a047; color:white; border:none;">📅 Insert Date</button>
             </div>
             <div id="np_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
         </div>
 
         <div class="diagnosis-box">
-            <h3 style="margin-bottom:10px;">Consultation Notes</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h3 style="margin:0;">Consultation Notes</h3>
+    <button type="button" class="btn btn-secondary" style="padding:6px 12px; font-size:13px;" onclick="insertDateStamp('np_consultnotes', false)">📅 Insert Date</button>
+</div>
             <textarea class="form-control" id="np_consultnotes" placeholder="Clinical notes from the consultation…"></textarea>
         </div>
 
@@ -508,12 +512,16 @@
                     <option value="7">Extra large</option>
                 </select>
                <button type="button" onclick="openOpNoteFinder('ne')" style="margin-left:auto; background:#1976d2; color:white; border:none;">🔍 Find Op Note</button>
+               <button type="button" onclick="insertDateStamp('ne_surgical', true)" style="background:#43a047; color:white; border:none;">📅 Insert Date</button>
             </div>
             <div id="ne_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
         </div>
 
         <div class="diagnosis-box">
-            <h3 style="margin-bottom:10px;">Consultation Notes</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <h3 style="margin:0;">Consultation Notes</h3>
+    <button type="button" class="btn btn-secondary" style="padding:6px 12px; font-size:13px;" onclick="insertDateStamp('ne_consultnotes', false)">📅 Insert Date</button>
+</div>
             <textarea class="form-control" id="ne_consultnotes" placeholder="Clinical notes from the consultation…"></textarea>
         </div>
 
@@ -791,6 +799,18 @@ function openModal(id) { document.getElementById(id).classList.add('active'); }
 function openOpNoteFinder(prefix) {
     opNoteFinderTarget = prefix;
     openModal('opNoteFinderModal');
+}
+   
+function insertDateStamp(fieldId, isRichText) {
+    const field = document.getElementById(fieldId);
+    if (!field) return;
+    const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    if (isRichText) {
+        field.innerHTML = field.innerHTML ? field.innerHTML + '<p><strong>' + dateStr + '</strong></p>' : '<p><strong>' + dateStr + '</strong></p>';
+    } else {
+        field.value = field.value ? field.value + '\n\n' + dateStr + '\n' : dateStr + '\n';
+        field.focus();
+    }
 }
 
 window.addEventListener('message', function(event) {

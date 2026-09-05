@@ -1167,7 +1167,57 @@ async function loadRecentPatients() {
         .limit(10);
 
     if (error) { el.innerHTML = '<p style="color:#c62828;">Could not load patients.</p>'; console.error(error); return; }
-    renderPatientList(el, data);
+
+    renderGroupedPatientList(el, data);
+
+    if (data && data.length === 10) {
+        el.insertAdjacentHTML('beforeend', `
+            <div style="text-align:center; margin-top:15px;">
+                <button class="btn btn-secondary" id="loadMorePatientsBtn" onclick="loadAllPatients()">Load more</button>
+            </div>
+        `);
+    }
+}
+
+async function loadAllPatients() {
+    const btn = document.getElementById('loadMorePatientsBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+    const el = document.getElementById('recentPatientsList');
+    const { data, error } = await supabaseClient
+        .from('patients')
+        .select('id, patient_code, full_name, date_of_birth, sex, created_at')
+        .order('created_at', { ascending: false });
+
+    if (error) { alert('Could not load all patients.'); console.error(error); return; }
+
+    renderGroupedPatientList(el, data);
+}
+
+function renderGroupedPatientList(el, patients) {
+    if (!patients || patients.length === 0) { el.innerHTML = '<p style="color:#999;">No patients yet.</p>'; return; }
+
+    const groups = {};
+    patients.forEach(p => {
+        const dateKey = new Date(p.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+        if (!groups[dateKey]) groups[dateKey] = [];
+        groups[dateKey].push(p);
+    });
+
+    let html = '';
+    for (const dateKey of Object.keys(groups)) {
+        html += `<h4 style="margin:16px 0 8px; color:#1565c0;">${dateKey}</h4>`;
+        html += groups[dateKey].map(p => `
+            <div class="patient-list-item" onclick="openPatientDetail('${p.id}')">
+                <div>
+                    <strong>${p.full_name}</strong> · ${p.sex || ''} · DOB ${p.date_of_birth || 'N/A'}
+                    <br><span style="color:#666; font-size:13px;">${p.patient_code}</span>
+                </div>
+                <span class="badge badge-blue">View →</span>
+            </div>
+        `).join('');
+    }
+    el.innerHTML = html;
 }
 
 function renderPatientList(el, patients) {

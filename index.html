@@ -143,6 +143,8 @@
     .med-row input { padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
     .encounter-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .encounter-actions button { padding: 6px 12px; font-size: 13px; }
+    .intervention-block { margin-bottom: 15px; padding-bottom: 5px; }
+    .intervention-block-sep { border: none; border-top: 2px dashed #1976d2; margin: 20px 0; }
     @media (max-width: 768px) {
         .med-row { grid-template-columns: 1fr 1fr; }
         .encounter-tabs { flex-direction: column; }
@@ -165,7 +167,7 @@
     const PROVIDER_CREDENTIALS = "MBBS MD MRCS (Eng)";
     const PROVIDER_SPECIALTY = "Consultant Paediatric Surgeon";
     const PROVIDER_LICENSE = "SLMC 19629  |  GMC 7206553";
-   
+
 function expandLocationName(location) {
     if (location === 'SBSCH') return "Sirimavo Bandaranaike Specialised Children's Hospital - Peradeniya";
     return location;
@@ -322,21 +324,11 @@ function expandLocationName(location) {
         </div>
 
         <div class="diagnosis-box">
-            <h3 style="margin-bottom:10px;">Surgical Intervention</h3>
-            <div class="rte-toolbar">
-                <button type="button" onclick="rteCmd('np','bold')"><strong>B</strong></button>
-                <button type="button" onclick="rteCmd('np','italic')"><em>I</em></button>
-                <select onchange="rteFontSize('np', this.value)">
-                    <option value="">Font size</option>
-                    <option value="2">Small</option>
-                    <option value="3">Normal</option>
-                    <option value="5">Large</option>
-                    <option value="7">Extra large</option>
-                </select>
-               <button type="button" onclick="openOpNoteFinder('np')" style="margin-left:auto; background:#1976d2; color:white; border:none;">🔍 Find Op Note</button>
-               <button type="button" onclick="insertDateStamp('np_surgical', true)" style="background:#43a047; color:white; border:none;">📅 Insert Date</button>
+            <div class="flex-between" style="margin-bottom:0;">
+                <h3>Surgical Intervention(s)</h3>
+                <button type="button" class="btn btn-secondary" style="padding:6px 12px; font-size:13px;" onclick="addSurgicalBlock('np')">➕ Add Another Intervention</button>
             </div>
-            <div id="np_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
+            <div id="np_surgical_container"></div>
         </div>
 
         <div class="diagnosis-box">
@@ -362,7 +354,7 @@ function expandLocationName(location) {
             <div id="np_medRows"></div>
             <button class="btn btn-secondary" style="margin-top:6px;" onclick="addMedRow('np')">➕ Add Medication</button>
             <datalist id="genericDrugList"></datalist>
-           <datalist id="freeTextDiagnosisList"></datalist>
+            <datalist id="freeTextDiagnosisList"></datalist>
         </div>
 
         <div class="diagnosis-box">
@@ -506,21 +498,11 @@ function expandLocationName(location) {
         </div>
 
         <div class="diagnosis-box">
-            <h3 style="margin-bottom:10px;">Surgical Intervention</h3>
-            <div class="rte-toolbar">
-                <button type="button" onclick="rteCmd('ne','bold')"><strong>B</strong></button>
-                <button type="button" onclick="rteCmd('ne','italic')"><em>I</em></button>
-                <select onchange="rteFontSize('ne', this.value)">
-                    <option value="">Font size</option>
-                    <option value="2">Small</option>
-                    <option value="3">Normal</option>
-                    <option value="5">Large</option>
-                    <option value="7">Extra large</option>
-                </select>
-               <button type="button" onclick="openOpNoteFinder('ne')" style="margin-left:auto; background:#1976d2; color:white; border:none;">🔍 Find Op Note</button>
-               <button type="button" onclick="insertDateStamp('ne_surgical', true)" style="background:#43a047; color:white; border:none;">📅 Insert Date</button>
+            <div class="flex-between" style="margin-bottom:0;">
+                <h3>Surgical Intervention(s)</h3>
+                <button type="button" class="btn btn-secondary" style="padding:6px 12px; font-size:13px;" onclick="addSurgicalBlock('ne')">➕ Add Another Intervention</button>
             </div>
-            <div id="ne_surgical" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
+            <div id="ne_surgical_container"></div>
         </div>
 
         <div class="diagnosis-box">
@@ -594,7 +576,7 @@ function expandLocationName(location) {
         </div>
     </div>
 </div>
-   <!-- ============ LOADING OVERLAY ============ -->
+<!-- ============ LOADING OVERLAY ============ -->
 <div id="loadingOverlay" class="loading">
     <div class="spinner"></div>
     <p id="loadingText">Working…</p>
@@ -696,6 +678,11 @@ let currentPatientEncounters = [];
 let currentPatientDiagnoses = [];
 let currentPatientMedications = [];
 
+// Counters for the multi-intervention Surgical Intervention blocks — always
+// increment, never reused, so block field IDs stay unique within a form session.
+let newPatientSurgicalCounter = 0;
+let newEncounterSurgicalCounter = 0;
+
 // Common generic drug names for the medication datalist (names only — no dosing data,
 // since paediatric dosing/formulary data is licensed BNF-C content and cannot be embedded here).
 const GENERIC_DRUGS = [
@@ -736,11 +723,12 @@ window.onload = function () {
 
     const dl = document.getElementById('genericDrugList');
     if (dl) dl.innerHTML = GENERIC_DRUGS.map(d => `<option value="${d}">`).join('');
-   loadFreeTextDiagnosisList();
+    loadFreeTextDiagnosisList();
 };
 
 /* =========================================================================
-   FULL ICD-10 DATASET — lazy-loaded once, on first ICD search
+   FREE-TEXT DIAGNOSIS AUTOCOMPLETE — populated once at startup from every
+   previously entered free-text diagnosis, so the same wording can be reused
    ========================================================================= */
 async function loadFreeTextDiagnosisList() {
     const { data, error } = await supabaseClient.from('diagnoses').select('diagnosis_text').is('icd_code', null);
@@ -749,7 +737,11 @@ async function loadFreeTextDiagnosisList() {
     const dl = document.getElementById('freeTextDiagnosisList');
     if (dl) dl.innerHTML = unique.map(d => `<option value="${d.replace(/"/g, '&quot;')}">`).join('');
 }
-   function loadFullIcdDataset() {
+
+/* =========================================================================
+   FULL ICD-10 DATASET — lazy-loaded once, on first ICD search
+   ========================================================================= */
+function loadFullIcdDataset() {
     if (icd10Full) return Promise.resolve(icd10Full);
     if (icd10FullLoading) return icd10FullLoading;
     icd10FullLoading = fetch(ICD10_FULL_PATH)
@@ -808,13 +800,18 @@ function hideLoading() {
    ========================================================================= */
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 function openModal(id) { document.getElementById(id).classList.add('active'); }
-   let opNoteFinderTarget = null; // 'np' or 'ne' — which surgical field to fill
 
-function openOpNoteFinder(prefix) {
-    opNoteFinderTarget = prefix;
+/* =========================================================================
+   OP NOTE FINDER — opNoteFinderTarget now holds the exact field id of the
+   surgical intervention block currently being filled (e.g. 'np_surgical_2')
+   ========================================================================= */
+let opNoteFinderTarget = null;
+
+function openOpNoteFinder(fieldId) {
+    opNoteFinderTarget = fieldId;
     openModal('opNoteFinderModal');
 }
-   
+
 function insertDateStamp(fieldId, isRichText) {
     const field = document.getElementById(fieldId);
     if (!field) return;
@@ -830,7 +827,7 @@ function insertDateStamp(fieldId, isRichText) {
 window.addEventListener('message', function(event) {
     if (event.origin !== 'https://op-note-helper.lovable.app') return;
     if (event.data && event.data.type === 'operativeNote' && opNoteFinderTarget) {
-        const field = document.getElementById(opNoteFinderTarget + '_surgical');
+        const field = document.getElementById(opNoteFinderTarget);
         if (field) {
             const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
             const noteHtml = event.data.text.replace(/\n/g, '<br>');
@@ -840,6 +837,103 @@ window.addEventListener('message', function(event) {
         }
     }
 });
+
+/* =========================================================================
+   SURGICAL INTERVENTION — multiple independent blocks per encounter, each
+   with its own toolbar (bold/italic/font size, Find Op Note, Insert Date)
+   and its own contenteditable field. Blocks are combined into one HTML
+   string for storage, each wrapped in a .intervention-block div and
+   separated by an <hr class="intervention-block-sep">, so they can be
+   split back apart when editing an existing encounter.
+   prefix: 'np' or 'ne'   index: 0,1,2… unique within this form session
+   ========================================================================= */
+function renderSurgicalBlock(prefix, index) {
+    const fieldId = prefix + '_surgical_' + index;
+    const blockId = prefix + '_surgical_block_' + index;
+    return `
+        <div class="intervention-block" id="${blockId}">
+            <div class="rte-toolbar">
+                <button type="button" onclick="rteCmd('${fieldId}','bold')"><strong>B</strong></button>
+                <button type="button" onclick="rteCmd('${fieldId}','italic')"><em>I</em></button>
+                <select onchange="rteFontSize('${fieldId}', this.value)">
+                    <option value="">Font size</option>
+                    <option value="2">Small</option>
+                    <option value="3">Normal</option>
+                    <option value="5">Large</option>
+                    <option value="7">Extra large</option>
+                </select>
+                <button type="button" onclick="openOpNoteFinder('${fieldId}')" style="background:#1976d2; color:white; border:none;">🔍 Find Op Note</button>
+                <button type="button" onclick="insertDateStamp('${fieldId}', true)" style="background:#43a047; color:white; border:none;">📅 Insert Date</button>
+                <button type="button" onclick="removeSurgicalBlock('${prefix}',${index})" style="margin-left:auto; background:#e53935; color:white; border:none;">✕ Remove</button>
+            </div>
+            <div id="${fieldId}" class="rte-editable" contenteditable="true" data-placeholder="Describe the procedure, findings, steps…"></div>
+        </div>
+    `;
+}
+
+function addSurgicalBlock(prefix) {
+    if (prefix === 'np') newPatientSurgicalCounter++; else newEncounterSurgicalCounter++;
+    const index = prefix === 'np' ? newPatientSurgicalCounter : newEncounterSurgicalCounter;
+    const container = document.getElementById(prefix + '_surgical_container');
+    container.insertAdjacentHTML('beforeend', '<hr class="intervention-block-sep">' + renderSurgicalBlock(prefix, index));
+}
+
+function removeSurgicalBlock(prefix, index) {
+    const container = document.getElementById(prefix + '_surgical_container');
+    const blockEl = document.getElementById(prefix + '_surgical_block_' + index);
+    if (!blockEl) return;
+    // Remove a preceding divider too, if there is one, so blank gaps don't build up
+    if (blockEl.previousElementSibling && blockEl.previousElementSibling.classList.contains('intervention-block-sep')) {
+        blockEl.previousElementSibling.remove();
+    }
+    blockEl.remove();
+}
+
+// Resets the Surgical Intervention section back to a single empty block (used when
+// opening a fresh New Patient / New Encounter form)
+function resetSurgicalBlocks(prefix) {
+    if (prefix === 'np') newPatientSurgicalCounter = 0; else newEncounterSurgicalCounter = 0;
+    const container = document.getElementById(prefix + '_surgical_container');
+    container.innerHTML = renderSurgicalBlock(prefix, 0);
+}
+
+// Loads a saved surgical_intervention_html string back into one block per
+// intervention (used when opening an existing encounter for editing).
+// Falls back to a single block for older records saved before this feature.
+function loadSurgicalBlocks(prefix, html) {
+    const container = document.getElementById(prefix + '_surgical_container');
+    if (!html) { resetSurgicalBlocks(prefix); return; }
+
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const savedBlocks = temp.querySelectorAll('.intervention-block');
+
+    if (savedBlocks.length === 0) {
+        // Legacy record: one plain block, no wrapper markup
+        if (prefix === 'np') newPatientSurgicalCounter = 0; else newEncounterSurgicalCounter = 0;
+        container.innerHTML = renderSurgicalBlock(prefix, 0);
+        document.getElementById(prefix + '_surgical_0').innerHTML = html;
+        return;
+    }
+
+    if (prefix === 'np') newPatientSurgicalCounter = savedBlocks.length - 1; else newEncounterSurgicalCounter = savedBlocks.length - 1;
+    let out = '';
+    savedBlocks.forEach((_, i) => { out += (i > 0 ? '<hr class="intervention-block-sep">' : '') + renderSurgicalBlock(prefix, i); });
+    container.innerHTML = out;
+    savedBlocks.forEach((block, i) => { document.getElementById(prefix + '_surgical_' + i).innerHTML = block.innerHTML; });
+}
+
+// Gathers every non-empty block's content into one combined HTML string ready
+// for saving. Returns null if every block is empty.
+function getSurgicalHtml(prefix) {
+    const container = document.getElementById(prefix + '_surgical_container');
+    const editables = container.querySelectorAll('.rte-editable');
+    const parts = [];
+    editables.forEach(ed => {
+        if (ed.innerHTML && ed.innerHTML.trim()) parts.push('<div class="intervention-block">' + ed.innerHTML + '</div>');
+    });
+    return parts.length > 0 ? parts.join('<hr class="intervention-block-sep">') : null;
+}
 
 /* =========================================================================
    ICD-10 SEARCH (shared by new-patient and new-encounter forms)
@@ -939,15 +1033,16 @@ function renderDiagnosisList(prefix) {
 }
 
 /* =========================================================================
-   RICH TEXT (surgical intervention editor) — bold, italic, font size
+   RICH TEXT — bold, italic, font size, now taking the exact field id
+   directly (used by the surgical intervention blocks above)
    ========================================================================= */
-function rteCmd(prefix, cmd) {
-    document.getElementById(prefix + '_surgical').focus();
+function rteCmd(fieldId, cmd) {
+    document.getElementById(fieldId).focus();
     document.execCommand(cmd, false, null);
 }
-function rteFontSize(prefix, size) {
+function rteFontSize(fieldId, size) {
     if (!size) return;
-    document.getElementById(prefix + '_surgical').focus();
+    document.getElementById(fieldId).focus();
     document.execCommand('fontSize', false, size);
 }
 
@@ -1098,7 +1193,7 @@ function openNewPatientModal() {
     document.getElementById('np_admtype').value = '';
     document.getElementById('np_doctype').value = '';
     document.getElementById('np_photoRow').innerHTML = '';
-    document.getElementById('np_surgical').innerHTML = '';
+    resetSurgicalBlocks('np');
     document.getElementById('np_regdate').value = new Date().toISOString().slice(0, 10);
     renderDiagnosisList('np');
     renderMedRows('np');
@@ -1140,7 +1235,7 @@ async function saveNewPatient() {
             date_of_discharge: document.getElementById('np_dischargedate').value || null,
             weight_kg: parseFloat(document.getElementById('np_weight').value) || null,
             reason_for_admission: document.getElementById('np_reason').value || null,
-            surgical_intervention_html: document.getElementById('np_surgical').innerHTML || null,
+            surgical_intervention_html: getSurgicalHtml('np'),
             consultation_notes: document.getElementById('np_consultnotes').value || null,
             investigations_haematology: document.getElementById('np_inv_haem').value || null,
             investigations_imaging: document.getElementById('np_inv_imaging').value || null,
@@ -1504,7 +1599,7 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
                             ${enc.weight_kg ? enc.weight_kg + ' kg' : ''}
                         </p>
                         ${encDiagnoses.length > 0 ? '<p style="margin-top:8px;">' + encDiagnoses.map(d => `<span class="badge badge-green" style="margin-right:6px;">${d.icd_code ? d.icd_code + ' — ' : ''}${d.diagnosis_text}${d.notes ? ' (' + d.notes + ')' : ''}</span>`).join('') + '</p>' : ''}
-                        ${enc.surgical_intervention_html ? `<div style="margin-top:8px; font-size:14px;"><strong>Surgical Intervention:</strong><div style="background:#f9f9f9; padding:8px; border-radius:6px; margin-top:4px;">${enc.surgical_intervention_html}</div></div>` : ''}
+                        ${enc.surgical_intervention_html ? `<div style="margin-top:8px; font-size:14px;"><strong>Surgical Intervention(s):</strong><div style="background:#f9f9f9; padding:8px; border-radius:6px; margin-top:4px;">${enc.surgical_intervention_html}</div></div>` : ''}
                         ${enc.consultation_notes ? `<div style="margin-top:8px; font-size:14px;"><strong>Consultation Notes:</strong><p style="margin-top:2px;">${enc.consultation_notes}</p></div>` : ''}
                         ${(enc.investigations_haematology || enc.investigations_imaging || enc.investigations_pathology) ? `
                             <div style="margin-top:8px; font-size:14px;"><strong>Investigations:</strong>
@@ -1551,7 +1646,7 @@ function resetEncounterForm() {
     document.getElementById('ne_admtype').value = '';
     document.getElementById('ne_doctype').value = '';
     document.getElementById('ne_photoRow').innerHTML = '';
-    document.getElementById('ne_surgical').innerHTML = '';
+    resetSurgicalBlocks('ne');
     renderDiagnosisList('ne');
     renderMedRows('ne');
 }
@@ -1590,7 +1685,7 @@ async function openEditEncounterModal(encounterId) {
         document.getElementById('ne_dischargedate').value = enc.date_of_discharge || '';
         document.getElementById('ne_weight').value = enc.weight_kg || '';
         document.getElementById('ne_reason').value = enc.reason_for_admission || '';
-        document.getElementById('ne_surgical').innerHTML = enc.surgical_intervention_html || '';
+        loadSurgicalBlocks('ne', enc.surgical_intervention_html);
         document.getElementById('ne_consultnotes').value = enc.consultation_notes || '';
         document.getElementById('ne_inv_haem').value = enc.investigations_haematology || '';
         document.getElementById('ne_inv_imaging').value = enc.investigations_imaging || '';
@@ -1627,7 +1722,7 @@ async function saveNewEncounter() {
             date_of_discharge: document.getElementById('ne_dischargedate').value || null,
             weight_kg: parseFloat(document.getElementById('ne_weight').value) || null,
             reason_for_admission: document.getElementById('ne_reason').value || null,
-            surgical_intervention_html: document.getElementById('ne_surgical').innerHTML || null,
+            surgical_intervention_html: getSurgicalHtml('ne'),
             consultation_notes: document.getElementById('ne_consultnotes').value || null,
             investigations_haematology: document.getElementById('ne_inv_haem').value || null,
             investigations_imaging: document.getElementById('ne_inv_imaging').value || null,
@@ -1725,7 +1820,10 @@ function formatNumberForWhatsApp(rawNumber) {
 function stripHtml(html) {
     if (!html) return '';
     const tmp = document.createElement('div');
-    tmp.innerHTML = html.replace(/<div>/gi, '\n').replace(/<br\s*\/?>/gi, '\n');
+    tmp.innerHTML = html
+        .replace(/<hr[^>]*>/gi, '\n\n--- Next intervention ---\n\n')
+        .replace(/<div[^>]*>/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n');
     return (tmp.textContent || tmp.innerText || '').trim();
 }
 
@@ -1767,8 +1865,8 @@ function buildDischargeSummaryDocCore(encounterId, logoDataUrl) {
     const margin = 15;
     let y = 15;
 
-   doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
-doc.text(enc.location ? expandLocationName(enc.location) : HOSPITAL_NAME, pageWidth / 2, y + 8, { align: 'center' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.text(enc.location ? expandLocationName(enc.location) : HOSPITAL_NAME, pageWidth / 2, y + 8, { align: 'center' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
     doc.text('Discharge Summary', pageWidth / 2, y + 16, { align: 'center' });
     y += 30;
@@ -1779,11 +1877,11 @@ doc.text(enc.location ? expandLocationName(enc.location) : HOSPITAL_NAME, pageWi
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
     doc.text('Patient Details', margin, y); y += 6;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-   const demoLines = [
-    `Name: ${p.full_name}     Admission No: ${enc.visit_or_admission_number || 'N/A'}`,
-    `Date of Birth: ${p.date_of_birth || 'N/A'}     Age: ${calculateAge(p.date_of_birth)}     Sex: ${p.sex || 'N/A'}`,
-    `Contact: ${p.contact_number || 'N/A'}     Patient Type: ${enc.patient_type || 'N/A'}`
-];
+    const demoLines = [
+        `Name: ${p.full_name}     Admission No: ${enc.visit_or_admission_number || 'N/A'}`,
+        `Date of Birth: ${p.date_of_birth || 'N/A'}     Age: ${calculateAge(p.date_of_birth)}     Sex: ${p.sex || 'N/A'}`,
+        `Contact: ${p.contact_number || 'N/A'}     Patient Type: ${enc.patient_type || 'N/A'}`
+    ];
     demoLines.forEach(line => { doc.text(line, margin, y); y += 5.5; });
     y += 3;
 
@@ -1809,7 +1907,7 @@ doc.text(enc.location ? expandLocationName(enc.location) : HOSPITAL_NAME, pageWi
     }
 
     if (enc.surgical_intervention_html) {
-        doc.setFont('helvetica', 'bold'); doc.text('Surgical Intervention', margin, y); y += 6;
+        doc.setFont('helvetica', 'bold'); doc.text('Surgical Intervention(s)', margin, y); y += 6;
         doc.setFont('helvetica', 'normal');
         y = addWrappedText(doc, stripHtml(enc.surgical_intervention_html), margin, y, pageWidth - margin * 2);
         y += 4;
@@ -1918,7 +2016,7 @@ function shareDischargeSummaryWhatsApp(encounterId) {
         lines.push(`Diagnoses: ${encDiagnoses.map(d => `${d.icd_code ? d.icd_code + ' - ' : ''}${d.diagnosis_text}${d.notes ? ' (' + d.notes + ')' : ''}`).join('; ')}`);
     }
     if (enc.surgical_intervention_html) {
-        lines.push(`Surgical Intervention: ${stripHtml(enc.surgical_intervention_html)}`);
+        lines.push(`Surgical Intervention(s): ${stripHtml(enc.surgical_intervention_html)}`);
     }
     if (enc.consultation_notes) lines.push(`Consultation Notes: ${enc.consultation_notes}`);
     if (enc.investigations_haematology) lines.push(`Investigations (Haem/Biochem): ${enc.investigations_haematology}`);
@@ -2100,7 +2198,7 @@ async function buildAndDownloadExcel(patients, statusEl, filenamePrefix) {
                     'Date of Discharge': enc ? enc.date_of_discharge || '' : '',
                     'Reason for Admission': enc ? enc.reason_for_admission || '' : '',
                     'Diagnoses (ICD / Text)': encDiagnoses.map(d => `${d.icd_code ? d.icd_code + ' - ' : ''}${d.diagnosis_text}${d.notes ? ' (' + d.notes + ')' : ''}`).join(' | '),
-                    'Surgical Intervention': enc ? stripHtml(enc.surgical_intervention_html) : '',
+                    'Surgical Intervention(s)': enc ? stripHtml(enc.surgical_intervention_html) : '',
                     'Consultation Notes': enc ? enc.consultation_notes || '' : '',
                     'Investigations - Haem/Biochem': enc ? enc.investigations_haematology || '' : '',
                     'Investigations - Imaging': enc ? enc.investigations_imaging || '' : '',

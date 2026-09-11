@@ -290,7 +290,7 @@ function expandLocationName(location) {
                     <label>Patient Type</label>
                     <select class="form-control" id="np_patienttype"><option>Outpatient</option><option>Inpatient</option></select>
                 </div>
-                <div class="form-group"><label>Visit / Admission Number</label><input type="number" class="form-control" id="np_visitnum"></div>
+                <div class="form-group"><label>Visit / Admission Number</label><input type="text" class="form-control" id="np_visitnum"></div>
                 <div class="form-group"><label>Ward</label><input class="form-control" id="np_ward"></div>
                 <div class="form-group">
                     <label>Admission Type</label>
@@ -474,7 +474,7 @@ function expandLocationName(location) {
                 <label>Patient Type</label>
                 <select class="form-control" id="ne_patienttype"><option>Outpatient</option><option>Inpatient</option></select>
             </div>
-            <div class="form-group"><label>Visit / Admission Number</label><input type="number" class="form-control" id="ne_visitnum"></div>
+            <div class="form-group"><label>Visit / Admission Number</label><input type="text" class="form-control" id="ne_visitnum"></div>
             <div class="form-group"><label>Ward</label><input class="form-control" id="ne_ward"></div>
             <div class="form-group">
                 <label>Admission Type</label>
@@ -1124,7 +1124,7 @@ async function saveNewPatient() {
             patient_id: patientId,
             location: document.getElementById('np_location').value,
             patient_type: document.getElementById('np_patienttype').value,
-            visit_or_admission_number: parseInt(document.getElementById('np_visitnum').value) || null,
+            visit_or_admission_number: document.getElementById('np_visitnum').value || null,
             ward: document.getElementById('np_ward').value || null,
             admission_type: document.getElementById('np_admtype').value || null,
             date_of_visit: document.getElementById('np_visitdate').value || null,
@@ -1611,7 +1611,7 @@ async function saveNewEncounter() {
             patient_id: currentPatient.id,
             location: document.getElementById('ne_location').value,
             patient_type: document.getElementById('ne_patienttype').value,
-            visit_or_admission_number: parseInt(document.getElementById('ne_visitnum').value) || null,
+            visit_or_admission_number: document.getElementById('ne_visitnum').value || null,
             ward: document.getElementById('ne_ward').value || null,
             admission_type: document.getElementById('ne_admtype').value || null,
             date_of_visit: document.getElementById('ne_visitdate').value || null,

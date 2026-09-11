@@ -313,7 +313,7 @@ function expandLocationName(location) {
             <div class="diagnosis-input-group">
                 <div class="form-group" style="margin-bottom:0;">
                     <label>Or enter free text diagnosis</label>
-                    <input class="form-control" id="np_freetext">
+                    <input class="form-control" id="np_freetext" list="freeTextDiagnosisList">
                 </div>
                 <button class="btn btn-primary" onclick="addFreeTextDiagnosis('np')">Add</button>
             </div>
@@ -362,6 +362,7 @@ function expandLocationName(location) {
             <div id="np_medRows"></div>
             <button class="btn btn-secondary" style="margin-top:6px;" onclick="addMedRow('np')">➕ Add Medication</button>
             <datalist id="genericDrugList"></datalist>
+           <datalist id="freeTextDiagnosisList"></datalist>
         </div>
 
         <div class="diagnosis-box">
@@ -496,7 +497,7 @@ function expandLocationName(location) {
             <div class="diagnosis-input-group">
                 <div class="form-group" style="margin-bottom:0;">
                     <label>Or enter free text diagnosis</label>
-                    <input class="form-control" id="ne_freetext">
+                    <input class="form-control" id="ne_freetext" list="freeTextDiagnosisList">
                 </div>
                 <button class="btn btn-primary" onclick="addFreeTextDiagnosis('ne')">Add</button>
             </div>
@@ -735,12 +736,20 @@ window.onload = function () {
 
     const dl = document.getElementById('genericDrugList');
     if (dl) dl.innerHTML = GENERIC_DRUGS.map(d => `<option value="${d}">`).join('');
+   loadFreeTextDiagnosisList();
 };
 
 /* =========================================================================
    FULL ICD-10 DATASET — lazy-loaded once, on first ICD search
    ========================================================================= */
-function loadFullIcdDataset() {
+async function loadFreeTextDiagnosisList() {
+    const { data, error } = await supabaseClient.from('diagnoses').select('diagnosis_text').is('icd_code', null);
+    if (error) { console.error('Could not load previous diagnoses:', error); return; }
+    const unique = [...new Set((data || []).map(d => d.diagnosis_text).filter(Boolean))].sort();
+    const dl = document.getElementById('freeTextDiagnosisList');
+    if (dl) dl.innerHTML = unique.map(d => `<option value="${d.replace(/"/g, '&quot;')}">`).join('');
+}
+   function loadFullIcdDataset() {
     if (icd10Full) return Promise.resolve(icd10Full);
     if (icd10FullLoading) return icd10FullLoading;
     icd10FullLoading = fetch(ICD10_FULL_PATH)

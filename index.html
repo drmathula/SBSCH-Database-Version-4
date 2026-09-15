@@ -939,7 +939,7 @@ function getSurgicalHtml(prefix) {
    ICD-10 SEARCH (shared by new-patient and new-encounter forms)
    prefix: 'np' or 'ne'
    ========================================================================= */
-function renderIcdResults(prefix) {
+async function renderIcdResults(prefix) {
     const query = document.getElementById(prefix + '_icdsearch').value.trim().toLowerCase();
     const resultsEl = document.getElementById(prefix + '_icdresults');
     if (!query) { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; return; }
@@ -947,41 +947,69 @@ function renderIcdResults(prefix) {
     resultsEl.innerHTML = '<div class="icd-item" style="color:#999;">Searching…</div>';
     resultsEl.classList.remove('hidden');
 
-    loadFullIcdDataset().then(fullData => {
-        // Re-check the box still has the same query (user may have kept typing)
-        const currentQuery = document.getElementById(prefix + '_icdsearch').value.trim().toLowerCase();
-        if (currentQuery !== query) return;
+    const fullData = await loadFullIcdDataset();
+    let currentQuery = document.getElementById(prefix + '_icdsearch').value.trim().toLowerCase();
+    if (currentQuery !== query) return;
 
-        const seen = new Set();
-        const matches = [];
+    const seen = new Set();
+    const matches = [];
 
-        // Curated paediatric-surgery list first (fastest, most relevant for this practice)
-        for (const item of ICD10_CODES) {
-            if (matches.length >= 20) break;
-            if (item.code.toLowerCase().includes(query) || item.description.toLowerCase().includes(query)) {
-                matches.push(item); seen.add(item.code);
-            }
+    // Curated paediatric-surgery list first (fastest, most relevant for this practice)
+    for (const item of ICD10_CODES) {
+        if (matches.length >= 20) break;
+        if (item.code.toLowerCase().includes(query) || item.description.toLowerCase().includes(query)) {
+            matches.push({ ...item, source: 'ICD-10' }); seen.add(item.code);
         }
-        // Then the full ICD-10 index
-        for (const [code, description] of fullData) {
-            if (matches.length >= 20) break;
-            if (seen.has(code)) continue;
-            if (code.toLowerCase().includes(query) || description.toLowerCase().includes(query)) {
-                matches.push({ code, description }); seen.add(code);
-            }
+    }
+    // Then the full ICD-10 index
+    for (const [code, description] of fullData) {
+        if (matches.length >= 20) break;
+        if (seen.has(code)) continue;
+        if (code.toLowerCase().includes(query) || description.toLowerCase().includes(query)) {
+            matches.push({ code, description, source: 'ICD-10' }); seen.add(code);
         }
+    }
 
-        if (matches.length === 0) {
-            resultsEl.innerHTML = '<div class="icd-item" style="color:#999;">No matches — you can add it as free text instead</div>';
-        } else {
-            resultsEl.innerHTML = matches.map(m =>
-                `<div class="icd-item" onclick="selectIcd('${prefix}','${m.code}', ${JSON.stringify(m.description).replace(/"/g, '&quot;')})">
-                    <strong>${m.code}</strong> — ${m.description}
-                 </div>`
-            ).join('');
-        }
-        resultsEl.classList.remove('hidden');
+    // Show ICD-10 matches right away, then fetch ICD-11 in the background for
+    // common problems/symptoms that ICD-10 doesn't cover well
+    renderIcdMatchList(resultsEl, prefix, matches, true);
+
+    const icd11Matches = await searchIcd11(query);
+    currentQuery = document.getElementById(prefix + '_icdsearch').value.trim().toLowerCase();
+    if (currentQuery !== query) return;
+
+    icd11Matches.forEach(m => {
+        if (!seen.has(m.code)) { matches.push({ ...m, source: 'ICD-11' }); seen.add(m.code); }
     });
+
+    renderIcdMatchList(resultsEl, prefix, matches, false);
+}
+
+function renderIcdMatchList(resultsEl, prefix, matches, stillLoadingIcd11) {
+    if (matches.length === 0) {
+        resultsEl.innerHTML = stillLoadingIcd11
+            ? '<div class="icd-item" style="color:#999;">Searching…</div>'
+            : '<div class="icd-item" style="color:#999;">No matches — you can add it as free text instead</div>';
+        return;
+    }
+    resultsEl.innerHTML = matches.map(m =>
+        `<div class="icd-item" onclick="selectIcd('${prefix}','${m.code}', ${JSON.stringify(m.description).replace(/"/g, '&quot;')})">
+            <strong>${m.code}</strong> — ${m.description} <span style="color:#999; font-size:11px;">(${m.source})</span>
+         </div>`
+    ).join('') + (stillLoadingIcd11 ? '<div class="icd-item" style="color:#999; font-style:italic;">Searching ICD-11 for more…</div>' : '');
+}
+
+async function searchIcd11(query) {
+    try {
+        const url = `https://clinicaltables.nlm.nih.gov/api/icd11_codes/v3/search?terms=${encodeURIComponent(query)}&maxList=10`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        const rows = data[3] || [];
+        return rows.map(r => ({ code: r[0], description: r[1] }));
+    } catch (err) {
+        console.error('ICD-11 lookup failed:', err);
+        return [];
+    }
 }
 
 function selectIcd(prefix, code, description) {

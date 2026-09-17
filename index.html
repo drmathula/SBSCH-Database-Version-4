@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -162,6 +163,7 @@
     const DRIVE_FOLDER_NAME = "SBSCH Patient Documents";
     const ICD10_FULL_PATH = "./icd10_full.json";
     const LOGO_PATH = "./logo.png";
+    const SIGNATURE_PATH = "./signature.png";
     const HOSPITAL_NAME = "Sirimavo Bandaranaike Specialised Children's Hospital - Kandy";
     const PROVIDER_NAME = "Dr. Mathula Hettiarachchi";
     const PROVIDER_CREDENTIALS = "MBBS MD MRCS (Eng)";
@@ -1441,9 +1443,12 @@ function renderSearchSuggestions() {
                 const { data } = await supabaseClient.from('patients').select('full_name').ilike('full_name', `%${query}%`).limit(50);
                 suggestions = (data || []).map(r => ({ label: r.full_name, value: r.full_name }));
             } else if (mode === 'diagnosis') {
-                const { data } = await supabaseClient.from('diagnoses').select('diagnosis_text, icd_code')
-                    .or(`diagnosis_text.ilike.%${query}%,icd_code.ilike.%${query}%`).limit(50);
-                suggestions = (data || []).map(r => ({
+                const [textRes, codeRes] = await Promise.all([
+                    supabaseClient.from('diagnoses').select('diagnosis_text, icd_code').ilike('diagnosis_text', `%${query}%`).limit(50),
+                    supabaseClient.from('diagnoses').select('diagnosis_text, icd_code').ilike('icd_code', `%${query}%`).limit(50)
+                ]);
+                const data = [...(textRes.data || []), ...(codeRes.data || [])];
+                suggestions = data.map(r => ({
                     label: r.icd_code ? `${r.icd_code} — ${r.diagnosis_text}` : r.diagnosis_text,
                     value: r.diagnosis_text
                 }));
@@ -1508,10 +1513,13 @@ async function runSearch() {
             if (error) throw error;
             patients = data;
         } else if (mode === 'diagnosis') {
-            const { data: diagMatches, error: diagErr } = await supabaseClient.from('diagnoses').select('patient_id')
-                .or(`diagnosis_text.ilike.%${query}%,icd_code.ilike.%${query}%`);
-            if (diagErr) throw diagErr;
-            const patientIds = [...new Set(diagMatches.map(d => d.patient_id))];
+            const [textRes, codeRes] = await Promise.all([
+                supabaseClient.from('diagnoses').select('patient_id').ilike('diagnosis_text', `%${query}%`),
+                supabaseClient.from('diagnoses').select('patient_id').ilike('icd_code', `%${query}%`)
+            ]);
+            if (textRes.error) throw textRes.error;
+            if (codeRes.error) throw codeRes.error;
+            const patientIds = [...new Set([...(textRes.data || []), ...(codeRes.data || [])].map(d => d.patient_id))];
             if (patientIds.length > 0) {
                 const { data, error } = await supabaseClient.from('patients').select('*').in('id', patientIds);
                 if (error) throw error;
@@ -1640,6 +1648,9 @@ function renderPatientDetail(patient, encounters, diagnoses, documents, medicati
                     </div>
                     <div class="encounter-actions">
                         <button class="btn btn-secondary" onclick="openEditEncounterModal('${enc.id}')">✏️ Edit</button>
+                        <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; margin-right:6px;">
+                            <input type="checkbox" id="sigCheck_${enc.id}"> Include signature
+                        </label>
                         <button class="btn btn-info" onclick="generateDischargeSummaryPDF('${enc.id}')">📄 Discharge Summary PDF</button>
                         <button class="btn btn-success" onclick="shareDischargeSummaryWhatsApp('${enc.id}')">📲 Send Summary via WhatsApp</button>
                         ${enc.follow_up_date ? `<button class="btn btn-success" onclick="sendFollowUpSms('${enc.id}')">📱 Send Follow-up SMS</button>` : ''}
@@ -1876,10 +1887,31 @@ function loadLogoDataUrl() {
     });
 }
 
+let cachedSignatureDataUrl = null;
+
+function loadSignatureDataUrl() {
+    if (cachedSignatureDataUrl) return Promise.resolve(cachedSignatureDataUrl);
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width; canvas.height = img.height;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+                cachedSignatureDataUrl = canvas.toDataURL('image/png');
+                resolve(cachedSignatureDataUrl);
+            } catch (e) { resolve(null); }
+        };
+        img.onerror = function () { resolve(null); };
+        img.src = SIGNATURE_PATH;
+    });
+}
+
 /* =========================================================================
    DISCHARGE SUMMARY PDF
    ========================================================================= */
-function buildDischargeSummaryDocCore(encounterId, logoDataUrl) {
+function buildDischargeSummaryDocCore(encounterId, logoDataUrl, includeSignature, signatureDataUrl) {
     if (!currentPatient) return null;
     const enc = currentPatientEncounters.find(e => e.id === encounterId);
     if (!enc) throw new Error('Encounter not found');
@@ -1985,6 +2017,10 @@ function buildDischargeSummaryDocCore(encounterId, logoDataUrl) {
     if (y > 250) { doc.addPage(); y = 15; }
     y += 10;
     doc.setDrawColor(180); doc.line(margin, y, pageWidth - margin, y); y += 8;
+    if (includeSignature && signatureDataUrl) {
+        doc.addImage(signatureDataUrl, 'PNG', margin, y, 45, 22);
+        y += 24;
+    }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
     doc.text(`${PROVIDER_NAME} ${PROVIDER_CREDENTIALS}`, margin, y); y += 5.5;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
@@ -1995,17 +2031,21 @@ function buildDischargeSummaryDocCore(encounterId, logoDataUrl) {
     return { doc, filename };
 }
 
-// Async wrapper used by the normal "Download PDF" button — loads/caches the logo first.
-// Timing doesn't matter here since a plain download has no special permission requirement.
-async function buildDischargeSummaryDoc(encounterId) {
+// Async wrapper used by the normal "Download PDF" button — loads/caches the logo (and
+// signature, if requested) first. Timing doesn't matter here since a plain download
+// has no special permission requirement.
+async function buildDischargeSummaryDoc(encounterId, includeSignature) {
     const logoDataUrl = await loadLogoDataUrl();
-    return buildDischargeSummaryDocCore(encounterId, logoDataUrl);
+    const signatureDataUrl = includeSignature ? await loadSignatureDataUrl() : null;
+    return buildDischargeSummaryDocCore(encounterId, logoDataUrl, includeSignature, signatureDataUrl);
 }
 
 async function generateDischargeSummaryPDF(encounterId) {
     showLoading('Generating discharge summary…');
     try {
-        const result = await buildDischargeSummaryDoc(encounterId);
+        const checkboxEl = document.getElementById('sigCheck_' + encounterId);
+        const includeSignature = checkboxEl ? checkboxEl.checked : false;
+        const result = await buildDischargeSummaryDoc(encounterId, includeSignature);
         if (!result) { hideLoading(); return; }
         result.doc.save(result.filename);
         hideLoading();
